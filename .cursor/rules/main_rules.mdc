@@ -1,0 +1,78 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# IMPORTANT RULES FOR YOU TO FOLLOW!!!
+- Always create code in a OOP approach when coding in Python
+- Always use the framework of Model, View, Controller to generate the code structure
+- Everytime you create a new file check the file structure below and consciosly decide where is the best place to put the file
+- You live and breath under the mantra: the simpler the better!
+- Modular and well organized code
+- Examine all the existing code in order to add new functionallities properly
+- Add comments on every function defined to know what it does
+- ALL THE COMMENTS SHOULD BE WRITTEN IN SPANISH!!!
+- Make good comments, that are actually useful for later revising the code
+- When adding new code, always plan what are you wanting to do, and then move onto modifying it in the actual code
+- Before adding any single line of code think if it's worth it or not -> remember, keep it simple
+- Before implementing any code, explain to me what you've understood that you have to do in detail
+- When running code from the root directory use this code snippet: "os.path.join(os.getcwd(), '.env')" to make sure you are using the root directory no matter what relative path you are in
+- All the tests performed need to be done using the pytest library. This is to keep a uniform test library throuout all the files
+- All the debugging techniques implemented should be based on logs, never prints.
+- Keep just 1 class definition for every file you create. If you need to use more than 1 class to code the feature, create a dedicated file for each classs
+- If you delete a part of the code, don't keep the deleted part commented or even mention that deleted part.
+- Always take the credentials for any auth from the config.py file where every credential is retrieved from the .env file. Don't retrieve the credentials from the .env file every time.
+
+
+#File Structure:
+repositorio_ajedrez_pre/
+│
+├── .env                # Variables de entorno (credenciales, claves API)
+├── .env.example        # Archivo de ejemplo de entorno
+├── .gitignore          # Especifica archivos que Git debe ignorar intencionadamente
+├── main.py             # Script principal para iniciar el juego, inicializa componentes MVC
+│
+├── models/             # Contiene los datos y la lógica del juego (El "cerebro")
+│   ├── __init__.py
+│   ├── juego.py        # Gestiona el estado general del juego
+│   ├── tablero.py      # Representa el tablero de ajedrez y las posiciones de las piezas
+│   ├── pieza.py        # Clase base para las piezas
+│   ├── piezas/         # Lógica específica de las piezas
+│   │   ├── __init__.py
+│   │   └── ...         # Clases individuales de piezas (por ejemplo, peon.py, rey.py)
+│   └── validador_movimientos.py # Lógica para validar movimientos
+│
+├── views/              # Maneja la presentación y la interfaz de usuario (Lo que ve el usuario)
+│   ├── __init__.py
+│   └── interfaz_ajedrez.py # Dibuja el tablero, las piezas, la información del jugador, etc.
+│   # Potencialmente subcarpetas assets/, ui_elements/ más adelante
+│
+├── controllers/        # Gestiona la entrada del usuario y la comunicación entre Modelo y Vista
+│   ├── __init__.py
+│   └── controlador_juego.py # Procesa la entrada, actualiza el Modelo, indica a la Vista que se actualice
+│
+├── assets/             # Archivos estáticos (por ejemplo, imágenes, documentos de requisitos)
+│   ├── __init__.py
+│   └── ...             # Archivos de imagen (.png), Documentos (.md, .pdf)
+│
+├── chats/              # Almacena registros de conversaciones con el asistente AI
+│   ├── __init__.py
+│   └── ...             # Archivos de historial de chat (.md)
+│
+├── .venv/              # Archivos del entorno virtual (generalmente excluidos de git)
+├── .git/               # Archivos del repositorio Git (ocultos)
+└── .cursor/            # Archivos de configuración de Cursor (ocultos)
+    └── rules/          # Reglas para el asistente AI
+        ├── main_rules.mdc
+        └── chats_rules.mdc
+
+
+
+
+
+

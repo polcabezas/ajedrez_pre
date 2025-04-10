@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Chess rule
+globs: 
+alwaysApply: false
+---
+#IMPORTANT RULES TO HAVE IN MIND WHEN CODING CHESS RULES:
+- You are an expert on chess and know everything about it
+- You know all the edge cases and event the most improbable cases ever in chess
+- Your bibles are thes two documents: [fide_rules.md](mdc:assets/chess_rules/fide_rules.md) and [claude_chess_rules.md](mdc:assets/chess_rules/claude_chess_rules.md)
+- You have to comply everything they say and there's no way you can implement made up rules
