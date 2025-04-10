@@ -27,17 +27,20 @@ class Tablero:
     # 1. Inicialización y Configuración del Tablero
     # ============================================================
     
-    def __init__(self):
+    def __init__(self, juego=None):
         """
         Inicializa el tablero con casillas vacías y el estado de juego por defecto
         (derechos de enroque, sin objetivo de captura al paso, lista de capturadas vacía),
         y luego coloca las piezas en sus posiciones iniciales.
+        
+        Args:
+            juego: Opcional. Instancia de la clase Juego que contiene este tablero.
         """
+        # Referencia al juego (puede ser None al principio y asignarse después)
+        self.juego = juego
+        
         # Tablero 8x8 inicializado con None (casillas vacías)
         self.casillas: List[List[Optional[Pieza]]] = [[None for _ in range(8)] for _ in range(8)]
-
-        # Historial de movimientos (color, posOrigen, posDestino) - Podría necesitar enriquecerse para simulación perfecta
-        self.historial_movimientos: List[Tuple[Literal['blanco', 'negro'], Tuple[int, int], Tuple[int, int]]] = []
 
         # Lista para almacenar las piezas capturadas
         self.piezasCapturadas: List[Pieza] = []
@@ -51,34 +54,16 @@ class Tablero:
         # Casilla objetivo para captura al paso, formato (fila, columna) o None
         self.objetivoPeonAlPaso: Optional[Tuple[int, int]] = None
 
-        # Turno del jugador
-        self.turno_blanco: bool = True # True = turno del blanco, False = turno del negro
-
-        # Contador para la regla de los 50 movimientos (se resetea con captura o mov. de peón)
-        self.contadorRegla50Movimientos: int = 0
-
-        # Contador de plies (medio movimiento). Empieza en 0 antes del primer movimiento.
-        self.contadorPly: int = 0
-
-        # Estado del juego (en curso, jaque, jaque mate, tablas, etc.)
-        self.estado_juego: Literal['en_curso', 'jaque', 'jaque_mate', 'tablas'] = 'en_curso'
-
-        # Número de movimiento completo (1 para el primer movimiento de blancas)
-        self.numero_movimiento: int = 1
-
         # Información del último movimiento realizado (origen, destino)
         self.ultimo_movimiento: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None
-
-        # Historial de posiciones para la regla de triple repetición
-        # Clave: string de representación de posición (tipo FEN), Valor: contador de ocurrencias
-        self.historial_posiciones: Dict[str, int] = defaultdict(int)
 
         # Inicializar el tablero con piezas
         self.inicializarTablero()
 
         # Registrar la posición inicial en el historial de repeticiones
-        estado_inicial = self.obtenerPosicionActual()
-        self.historial_posiciones[estado_inicial] = 1
+        if self.juego:
+            estado_inicial = self.obtenerPosicionActual()
+            self.juego.registrarPosicion(estado_inicial)
 
     def inicializarTablero(self):
         """
@@ -235,7 +220,11 @@ class Tablero:
         # 4. Añadir al historial
         # TODO: Considerar añadir información extra al historial para en passant/promoción si es necesario para FEN o PGN.
         color_jugador = pieza_movida.color
-        self.historial_movimientos.append((color_jugador, posOrigen, posDestino))
+        # Registrar el movimiento en el historial del juego si está disponible
+        if self.juego:
+            self.juego.historial_movimientos.append((color_jugador, posOrigen, posDestino))
+        else:
+            logger.warning("No hay juego asociado al tablero. No se puede registrar el movimiento en el historial.")
 
         # 5. Actualizar posición interna de la pieza
         if hasattr(pieza_movida, 'posicion'):
@@ -250,7 +239,15 @@ class Tablero:
         self.actualizarDerechosEnroque(pieza_movida, posOrigen, pieza_capturada, posDestino)
         # El objetivo al paso se actualiza DESPUÉS de los derechos de enroque
         self.actualizarPeonAlPaso(pieza_movida, posOrigen, posDestino)
-        self.actualizarContadores(pieza_movida, es_captura)
+        
+        # Actualizar contadores
+        if self.juego:
+            # Pasar la pieza directamente a Juego
+            self.juego.actualizarContadores(pieza_movida, es_captura)
+        else:
+            # Usar nuestra versión local que solo necesita booleanos
+            self.actualizarContadores(es_captura, isinstance(pieza_movida, Peon))
+            
         self.actualizarUltimoMovimiento(posOrigen, posDestino)
 
         # 7. Detectar promoción de peón
@@ -262,16 +259,25 @@ class Tablero:
                 es_promocion = True
                 logger.debug(f"Promoción necesaria en {posDestino}")
 
-        # 8. Cambiar turno
-        self.turno_blanco = not self.turno_blanco
-
+        # 8. Cambiar turno (si hay juego asociado)
+        if self.juego:
+            self.juego.cambiarTurno()
+        else:
+            logger.warning("No hay juego asociado al tablero. No se puede cambiar el turno.")
+        
         # 9. Actualizar historial de posiciones DESPUÉS de cambiar el turno
         estado_actual = self.obtenerPosicionActual()
-        self.historial_posiciones[estado_actual] += 1
-        logger.debug(f"Historial posiciones actualizado. Estado: '{estado_actual}', Count: {self.historial_posiciones[estado_actual]}")
+        if self.juego:
+            self.juego.registrarPosicion(estado_actual)
+        else:
+            logger.warning("No hay juego asociado al tablero. No se puede registrar la posición en el historial.")
+        logger.debug(f"Historial posiciones actualizado. Estado: '{estado_actual}'")
 
-        # 10. Actualizar estado del juego AHORA, después del cambio de turno (NUEVO LUGAR)
-        self.actualizarEstadoJuego()
+        # 10. Actualizar estado del juego AHORA, después del cambio de turno
+        if self.juego:
+            self.actualizarEstadoJuego()
+        else:
+            logger.warning("No hay juego asociado al tablero. No se puede actualizar el estado del juego.")
 
         # Retornar estado
         if es_promocion:
@@ -310,78 +316,70 @@ class Tablero:
     
     def realizarEnroque(self, color: Literal['blanco', 'negro'], tipo: Literal['corto', 'largo']) -> bool:
         """
-        Realiza el movimiento de enroque (Rey y Torre) asumiendo que ya ha sido validado.
-        Actualiza las posiciones en el tablero, el historial y el estado general del juego.
-
+        Realiza el movimiento de enroque (Rey y Torre).
+        
         Args:
-            color: El color del jugador que enroca ('blanco' o 'negro').
-            tipo: El tipo de enroque ('corto' para flanco de rey, 'largo' para flanco de dama).
+            color: El color del jugador que enroca.
+            tipo: El tipo de enroque ('corto' o 'largo').
 
         Returns:
-            True si el enroque se realizó con éxito (según los parámetros), False si hubo un error inesperado.
+            True si el enroque se realizó con éxito, False si hubo error.
         """
-        # Determinar filas y columnas según el color y tipo
-        fila = 0 if color == 'blanco' else 7
+        # Definir posiciones de origen y destino del rey y la torre según color y tipo
+        fila_base = 0 if color == 'blanco' else 7
         
-        # Posiciones iniciales y finales del Rey
-        rey_col_origen = 4
-        rey_pos_origen = (fila, rey_col_origen)
-        rey_col_destino = 6 if tipo == 'corto' else 2
-        rey_pos_destino = (fila, rey_col_destino)
+        # Posición inicial del rey (siempre en la columna 4)
+        rey_pos_origen = (fila_base, 4)
         
-        # Posiciones iniciales y finales de la Torre
-        torre_col_origen = 7 if tipo == 'corto' else 0
-        torre_pos_origen = (fila, torre_col_origen)
-        torre_col_destino = 5 if tipo == 'corto' else 3
-        torre_pos_destino = (fila, torre_col_destino)
-        
-        # Obtener las piezas (deberían ser Rey y Torre)
+        # Posiciones según tipo de enroque
+        if tipo == 'corto':
+            # Enroque corto (hacia la derecha)
+            rey_pos_destino = (fila_base, 6)
+            torre_pos_origen = (fila_base, 7)
+            torre_pos_destino = (fila_base, 5)
+        else:
+            # Enroque largo (hacia la izquierda)
+            rey_pos_destino = (fila_base, 2)
+            torre_pos_origen = (fila_base, 0)
+            torre_pos_destino = (fila_base, 3)
+            
+        # Obtener las piezas
         rey = self.getPieza(rey_pos_origen)
         torre = self.getPieza(torre_pos_origen)
         
-        if not isinstance(rey, Rey) or not isinstance(torre, Torre):
-            logger.error(f"Piezas incorrectas en {rey_pos_origen} o {torre_pos_origen} para enroque {color} {tipo}.")
+        if rey is None or torre is None:
+            logger.error(f"Rey o torre no encontrados para enroque {color} {tipo}")
             return False
-        
-        # Mover las piezas en el tablero
+            
+        # Mover físicamente las piezas
         self.setPieza(rey_pos_destino, rey)
         self.setPieza(rey_pos_origen, None)
         self.setPieza(torre_pos_destino, torre)
         self.setPieza(torre_pos_origen, None)
         
-        # Actualizar posición interna de las piezas
-        if hasattr(rey, 'posicion'): rey.posicion = rey_pos_destino
-        if hasattr(torre, 'posicion'): torre.posicion = torre_pos_destino
-        if hasattr(rey, 'se_ha_movido'): rey.se_ha_movido = True
-        if hasattr(torre, 'se_ha_movido'): torre.se_ha_movido = True
+        # Actualizar posiciones internas de las piezas
+        rey.posicion = rey_pos_destino
+        rey.se_ha_movido = True
+        torre.posicion = torre_pos_destino
+        torre.se_ha_movido = True
         
-        # Añadir al historial (puede requerir formato especial para PGN/FEN)
-        # Por ahora, añadimos un registro simple indicando enroque
-        # ¿O podríamos añadir los dos movimientos individuales? Mejor uno conceptual.
-        self.historial_movimientos.append((color, rey_pos_origen, rey_pos_destino)) # Registramos el mov del rey como representativo
-        
-        # Actualizar estado: derechos de enroque se pierden, contadores avanzan, etc.
-        # El rey se movió, así que pierde ambos derechos
+        # Actualizar estado: derechos de enroque se pierden
         self.derechosEnroque[color]['corto'] = False
         self.derechosEnroque[color]['largo'] = False
+        
         # Actualizar Peón al Paso (se limpia porque no fue mov de peón)
         self.objetivoPeonAlPaso = None 
-        # Actualizar Contadores (enroque no es captura ni mov de peón)
-        self.actualizarContadores(rey, False) # Usamos el rey como pieza movida
-        # Actualizar Último Movimiento (registramos el del rey)
-        self.actualizarUltimoMovimiento(rey_pos_origen, rey_pos_destino)
-        # Actualizar Estado del Juego
-        self.actualizarEstadoJuego()
         
-        # Cambiar turno
-        self.turno_blanco = not self.turno_blanco
+        # Guardar el último movimiento (solo del rey)
+        self.ultimo_movimiento = (rey_pos_origen, rey_pos_destino)
         
-        # 9. Actualizar historial de posiciones DESPUÉS de cambiar el turno
-        estado_actual = self.obtenerPosicionActual()
-        self.historial_posiciones[estado_actual] += 1
-        logger.debug(f"Historial posiciones actualizado (enroque). Estado: '{estado_actual}', Count: {self.historial_posiciones[estado_actual]}")
+        # Notificar al juego del enroque realizado
+        if self.juego:
+            self.juego.procesarEnroqueRealizado(color, tipo, rey_pos_origen, rey_pos_destino)
+        else:
+            logger.warning("No hay juego asociado al tablero. No se puede procesar el enroque.")
         
-        logger.info(f"Enroque {color} {tipo} realizado.")
+        logger.info(f"Enroque {color} {tipo} realizado en el tablero.")
         return True
     
     # ============================================================
@@ -500,12 +498,6 @@ class Tablero:
     # 5. Actualización del Estado del Juego (Post-Movimiento)
     # ============================================================
     
-    def getTurnoColor(self) -> Literal['blanco', 'negro']:
-        """
-        Devuelve el color del jugador cuyo turno es.
-        """
-        return 'blanco' if self.turno_blanco else 'negro'
-    
     def actualizarDerechosEnroque(self, pieza_movida: Pieza, posOrigen: Tuple[int, int], pieza_capturada: Optional[Pieza] = None, posDestino: Optional[Tuple[int, int]] = None):
         """
         Actualiza los derechos de enroque si se mueve el rey o una torre desde su posición inicial,
@@ -588,96 +580,53 @@ class Tablero:
             columna_objetivo = posOrigen[1]
             self.objetivoPeonAlPaso = (fila_objetivo, columna_objetivo)
 
-    def actualizarContadores(self, pieza_movida: Pieza, es_captura: bool):
+    def actualizarContadores(self, es_captura=False, es_movimiento_peon=False):
         """
-        Actualiza el contador de ply, el número de movimiento y el contador de la regla de 50 movimientos.
-        Llamado por `moverPieza`.
-
+        Actualiza los contadores de regla de 50 movimientos y número de jugada.
+        Este método solo debe usarse cuando NO hay un juego asociado al tablero.
+        Cuando hay un juego, las llamadas directas a actualizarContadores deben
+        tener una rama especial que llame a juego.actualizarContadores directamente.
+        
         Args:
-            pieza_movida: La pieza que se acaba de mover.
-            es_captura: True si el movimiento fue una captura, False en caso contrario.
+            es_captura (bool): Si el movimiento incluye una captura
+            es_movimiento_peon (bool): Si el movimiento es de un peón
         """
-        self.contadorPly += 1
-
-        # El número de movimiento incrementa después de que las negras muevan
-        if not self.turno_blanco: # Si turno_blanco es False, las negras ACABAN de mover
-            self.numero_movimiento += 1
-
-        # Resetear contador de 50 movimientos si fue un movimiento de peón o una captura
-        if isinstance(pieza_movida, Peon) or es_captura:
-            self.contadorRegla50Movimientos = 0
+        if self.juego:
+            logger.warning("Se ha llamado a tablero.actualizarContadores() cuando hay un juego asociado. " +
+                         "Esto es incorrecto - las llamadas directas deben usar juego.actualizarContadores() directamente.")
         else:
-            self.contadorRegla50Movimientos += 1
+            logger.warning("No hay juego asociado al tablero. No se pueden actualizar los contadores.")
+
+    def actualizarUltimoMovimiento(self, origen, destino):
+        """
+        Actualiza la información sobre el último movimiento realizado.
+        
+        Args:
+            origen (tuple): Posición de origen (fila, columna)
+            destino (tuple): Posición de destino (fila, columna)
+        """
+        # Guardar localmente el último movimiento
+        self.ultimo_movimiento = (origen, destino)
+        
+        # Delegar también al juego (si existe)
+        if self.juego:
+            self.juego.actualizarUltimoMovimiento(origen, destino)
             
-    def actualizarUltimoMovimiento(self, posOrigen: Tuple[int, int], posDestino: Tuple[int, int]):
-        """
-        Almacena las coordenadas del último movimiento realizado. Llamado por `moverPieza`.
-        """
-        self.ultimo_movimiento = (posOrigen, posDestino)
+        logger.debug(f"Último movimiento: {origen} -> {destino}")
 
     def actualizarEstadoJuego(self):
         """
-        Evalúa el estado actual del juego (en curso, jaque, jaque mate, tablas).
-        Llamado por `moverPieza` y `realizarEnroque`.
-        Depende de `esCasillaAmenazada` y `esTripleRepeticion`.
-        
-        NOTA:
-         - Verifica jaque y tablas por 50 mov/repetición/material insuficiente.
-         - NO implementa chequeo completo de mate/ahogado, ya que requiere la 
-           generación de TODOS los movimientos legales para el jugador actual, 
-           lo cual es responsabilidad de una capa superior (Controlador/Validador).
+        Actualiza el estado del juego basado en el tablero actual.
+        Este método calcula el estado actual (jaque, jaque mate, tablas, etc.)
+        y lo actualiza en el juego asociado si existe.
         """
-        color_jugador_actual = self.getTurnoColor() # Color del jugador QUE VA A MOVER AHORA
-        color_oponente = 'negro' if color_jugador_actual == 'blanco' else 'blanco'
-        
-        # Encontrar el rey del jugador actual
-        rey_pos = None
-        for r, fila in enumerate(self.casillas):
-            for c, pieza in enumerate(fila):
-                if isinstance(pieza, Rey) and pieza.color == color_jugador_actual:
-                    rey_pos = (r, c)
-                    break
-            if rey_pos: break
-
-        if rey_pos is None:
-             logger.critical(f"No se encontró el rey {color_jugador_actual}. Estado del juego no actualizado.") # Usar critical para errores graves
-             return
-
-        # 1. Comprobar condiciones de Tablas (que no dependen de movimientos legales)
-        if self.contadorRegla50Movimientos >= 100: # Son 50 movimientos completos, 100 plies
-            self.estado_juego = 'tablas'
-            logger.info("Tablas por regla de 50 movimientos.")
+        if not self.juego:
+            logger.warning("No hay juego asociado al tablero. No se puede actualizar el estado del juego.")
             return
-        if self.esTripleRepeticion():
-            self.estado_juego = 'tablas'
-            logger.info("Tablas por triple repetición.")
-            return
-        # Añadir chequeo de material insuficiente para tablas
-        if self.esMaterialInsuficiente():
-            self.estado_juego = 'tablas'
-            logger.info("Tablas por material insuficiente.")
-            return
-
-        # 2. Comprobar Jaque (evaluando si el rey actual está amenazado)
-        esta_en_jaque = self.esCasillaAmenazada(rey_pos, color_oponente)
-
-        # 3. Determinar estado final (Mate/Ahogado - REQUIERE MOVIMIENTOS LEGALES)
-        movimientos_legales = self.obtener_todos_movimientos_legales(color_jugador_actual)
-
-        if not movimientos_legales: # No hay movimientos legales
-           if esta_en_jaque:
-               self.estado_juego = 'jaque_mate'
-               logger.info(f"Jaque Mate a {color_jugador_actual}.")
-           else:
-               self.estado_juego = 'tablas' # Ahogado
-               logger.info(f"Tablas por ahogado a {color_jugador_actual}.")
-           return
-
-        # 4. Si hay movimientos legales (o no hemos comprobado aún), actualizar estado básico
-        if esta_en_jaque:
-            self.estado_juego = 'jaque'
-        else:
-            self.estado_juego = 'en_curso'
+            
+        # Delegar la actualización del estado al juego
+        # Esta es la responsabilidad de Juego, no de Tablero
+        self.juego.actualizarEstadoJuego()
 
     def esMaterialInsuficiente(self) -> bool:
         """
@@ -852,9 +801,8 @@ class Tablero:
         """
         Obtiene una representación en texto única de la posición actual del tablero,
         derechos de enroque, turno y objetivo de peón al paso.
-        Necesario para el chequeo de triple repetición. Utiliza un formato FEN estándar.
-        NOTA: Depende de `obtenerNotacionFEN` en las clases de Pieza para la parte de piezas.
-
+        Utiliza un formato FEN estándar.
+        
         Returns:
             String representando unívocamente el estado relevante para repetición (Formato FEN).
         """
@@ -886,8 +834,8 @@ class Tablero:
         piezas_str = "/".join(posicion_piezas) # Separador de filas estilo FEN
         
         # --- Resto del estado FEN (Turno, Enroque, Al Paso) ---
-        # Turno
-        turno_str = "w" if self.turno_blanco else "b"
+        # Turno (asume blanco si no hay juego asociado)
+        turno_str = "w" if (not self.juego or self.juego.turno_blanco) else "b"
         # Derechos de enroque
         enroque_str = ""
         if self.derechosEnroque['blanco']['corto']: enroque_str += "K"
@@ -914,28 +862,46 @@ class Tablero:
 
     def esTripleRepeticion(self) -> bool:
         """
-        Verifica si la posición actual (definida por piezas, turno, derechos enroque,
-        y objetivo al paso) se ha repetido tres veces en la partida consultando
-        el historial de posiciones mantenido por el tablero.
-        Llamado por `actualizarEstadoJuego`.
+        Verifica si la posición actual se ha repetido tres veces.
+        Delega al método correspondiente del juego si hay uno asociado.
 
         Returns:
             True si la posición actual se ha repetido tres (o más) veces, False en caso contrario.
         """
-        # Obtener la representación FEN estándar de la posición actual.
+        if not self.juego:
+            logger.warning("No hay juego asociado al tablero. No se puede verificar la triple repetición.")
+            return False
+            
+        # Obtener la representación FEN estándar de la posición actual
         posicion_actual_str = self.obtenerPosicionActual()
         
-        # Consultar el conteo en el historial mantenido por el tablero.
-        ocurrencias = self.historial_posiciones[posicion_actual_str]
-        
-        logger.debug(f"Chequeando Repetición: Pos actual FEN: '{posicion_actual_str}'. Ocurrencias: {ocurrencias}")
-        
-        # La regla se cumple si la posición ha aparecido 3 o más veces.
-        return ocurrencias >= 3
+        # Usar el método del juego
+        return self.juego.esTripleRepeticion(posicion_actual_str)
 
     # ============================================================
     # 6. Generación de Todos los Movimientos Legales (NUEVO)
     # ============================================================
+
+    def encontrarRey(self, color: Literal['blanco', 'negro']) -> Optional[Tuple[int, int]]:
+        """
+        Encuentra la posición del rey de un color específico en el tablero.
+        
+        Args:
+            color: El color del rey a buscar ('blanco' o 'negro').
+            
+        Returns:
+            Una tupla (fila, columna) con la posición del rey, o None si no se encuentra.
+        """
+        from model.piezas.rey import Rey
+        
+        for r in range(8):
+            for c in range(8):
+                pieza = self.casillas[r][c]
+                if isinstance(pieza, Rey) and pieza.color == color:
+                    return (r, c)
+        
+        logger.error(f"Rey de color {color} no encontrado en el tablero.")
+        return None
 
     def obtener_todos_movimientos_legales(self, color: Literal['blanco', 'negro']) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
         """

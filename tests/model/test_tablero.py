@@ -184,6 +184,27 @@ def test_moverPieza_simple_ok(tablero_inicial: Tablero):
     Prueba un movimiento simple y legal de un peón blanco.
     Verifica el estado del tablero y el retorno.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            self.llamada_cambiar_turno = False
+            self.hist_posicion_registrada = False
+            self.estado_actualizado = False
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            self.llamada_cambiar_turno = True
+            
+        def registrarPosicion(self, posicion):
+            self.hist_posicion_registrada = True
+            
+        def actualizarEstadoJuego(self):
+            self.estado_actualizado = True
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     origen = (1, 4) # Peón e2
     destino = (3, 4) # e4
     pieza_movida = tablero_inicial.getPieza(origen)
@@ -194,17 +215,37 @@ def test_moverPieza_simple_ok(tablero_inicial: Tablero):
     assert tablero_inicial.getPieza(origen) is None, "La casilla origen debe quedar vacía."
     assert tablero_inicial.getPieza(destino) is pieza_movida, "La pieza debe estar en la casilla destino."
     assert pieza_movida.posicion == destino, "La posición interna de la pieza debe actualizarse."
-    assert tablero_inicial.turno_blanco is False, "El turno debe pasar a las negras."
-    assert tablero_inicial.contadorPly == 1, "El contador Ply debe ser 1."
-    assert tablero_inicial.numero_movimiento == 1, "El número de movimiento debe seguir siendo 1."
-    assert tablero_inicial.contadorRegla50Movimientos == 0, "Contador 50 mov se resetea por peón."
+    assert juego_mock.llamada_cambiar_turno is True, "El método cambiarTurno debe ser llamado."
+    assert juego_mock.turno_blanco is False, "El turno debe cambiar a las negras."
+    assert juego_mock.hist_posicion_registrada is True, "Se debe registrar la posición en el historial."
+    assert juego_mock.estado_actualizado is True, "Se debe actualizar el estado del juego."
     assert tablero_inicial.ultimo_movimiento == (origen, destino), "Se debe registrar el último movimiento."
-    assert tablero_inicial.historial_movimientos[-1] == ('blanco', origen, destino), "El movimiento debe registrarse en el historial."
 
 def test_moverPieza_captura_ok(tablero_inicial: Tablero):
     """
     Prueba una captura simple y legal.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            self.llamada_cambiar_turno = False
+            self.hist_posicion_registrada = False
+            self.estado_actualizado = False
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            self.llamada_cambiar_turno = True
+            
+        def registrarPosicion(self, posicion):
+            self.hist_posicion_registrada = True
+            
+        def actualizarEstadoJuego(self):
+            self.estado_actualizado = True
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     # Configurar escenario: Caballo blanco en e4, Peón negro en d5
     tablero_inicial.setPieza((3, 4), Caballo('blanco', (3, 4), tablero_inicial))
     tablero_inicial.setPieza((4, 3), Peon('negro', (4, 3), tablero_inicial))
@@ -228,33 +269,66 @@ def test_moverPieza_captura_ok(tablero_inicial: Tablero):
     assert len(tablero_inicial.piezasCapturadas) == 1
     assert tablero_inicial.turno_blanco is False
     assert tablero_inicial.contadorRegla50Movimientos == 0, "Contador 50 mov se resetea por captura."
-    assert tablero_inicial.ultimo_movimiento == (origen, destino)
-    assert tablero_inicial.historial_movimientos[-1] == ('blanco', origen, destino)
+    assert tablero_inicial.ultimo_movimiento == (origen, destino), "Se debe registrar el último movimiento."
+    assert tablero_inicial.historial_movimientos[-1] == ('blanco', origen, destino), "El movimiento debe registrarse en el historial."
 
 def test_moverPieza_error_origen_vacio(tablero_inicial: Tablero):
     """
     Prueba intentar mover desde una casilla vacía.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     resultado = tablero_inicial.moverPieza((3, 3), (4, 4))
     assert resultado == 'error', "Debe retornar 'error' si el origen está vacío."
-    assert tablero_inicial.turno_blanco is True, "El turno no debe cambiar."
+    assert juego_mock.turno_blanco is True, "El turno no debe cambiar."
 
 def test_moverPieza_error_destino_propio(tablero_inicial: Tablero):
     """
     Prueba intentar capturar una pieza propia.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     resultado = tablero_inicial.moverPieza((0, 0), (1, 0)) # Torre a casilla de peón blanco
     assert resultado == 'error', "Debe retornar 'error' al intentar capturar pieza propia."
     assert isinstance(tablero_inicial.getPieza((1, 0)), Peon), "La pieza destino no debe cambiar."
-    assert tablero_inicial.turno_blanco is True, "El turno no debe cambiar."
+    assert juego_mock.turno_blanco is True, "El turno no debe cambiar."
 
 def test_moverPieza_error_posicion_invalida(tablero_inicial: Tablero):
     """
     Prueba intentar mover a/desde una posición inválida.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     assert tablero_inicial.moverPieza((0, 0), (0, 8)) == 'error' # Destino inválido
     assert tablero_inicial.moverPieza((-1, 0), (2, 2)) == 'error' # Origen inválido
-    assert tablero_inicial.turno_blanco is True, "El turno no debe cambiar."
+    assert juego_mock.turno_blanco is True, "El turno no debe cambiar."
 
 def test_setPieza(tablero_vacio: Tablero):
     """
@@ -272,6 +346,23 @@ def test_moverPieza_actualiza_se_ha_movido(tablero_inicial: Tablero):
     Verifica que moverPieza establece correctamente el flag se_ha_movido.
     Se prueba con Rey y Torre, que son cruciales para el enroque.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+        def registrarPosicion(self, posicion):
+            pass
+            
+        def actualizarEstadoJuego(self):
+            pass
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     # 1. Probar con el Rey Blanco
     rey_blanco_origen = (0, 4)
     rey_blanco_destino = (1, 4)
@@ -288,6 +379,11 @@ def test_moverPieza_actualiza_se_ha_movido(tablero_inicial: Tablero):
 
     # Resetear tablero para probar la torre (o usar uno nuevo)
     tablero_test_torre = Tablero() # Usar un tablero limpio para evitar interferencias
+    
+    # Crear nuevo mock para el tablero de prueba de la torre
+    juego_mock_torre = JuegoMock()
+    juego_mock_torre.turno_blanco = False  # Turno Negro
+    tablero_test_torre.juego = juego_mock_torre
 
     # 2. Probar con la Torre Negra (larga)
     torre_negra_origen = (7, 0)
@@ -314,14 +410,48 @@ def test_actualizarPeonAlPaso_creacion(tablero_inicial: Tablero):
     """
     Verifica que el objetivo al paso se crea correctamente tras avance doble de peón.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+        def registrarPosicion(self, posicion):
+            pass
+            
+        def actualizarEstadoJuego(self):
+            pass
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     tablero_inicial.moverPieza((1, 4), (3, 4)) # e2 -> e4
     assert tablero_inicial.objetivoPeonAlPaso == (2, 4), "El objetivo al paso debe ser e3 (2, 4)."
-    assert tablero_inicial.turno_blanco is False # Turno negro
+    assert juego_mock.turno_blanco is False # Turno negro
 
 def test_actualizarPeonAlPaso_limpieza(tablero_inicial: Tablero):
     """
     Verifica que el objetivo al paso se limpia tras un movimiento que no sea avance doble.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+        def registrarPosicion(self, posicion):
+            pass
+            
+        def actualizarEstadoJuego(self):
+            pass
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     tablero_inicial.moverPieza((1, 4), (3, 4)) # e4, crea objetivo e3
     assert tablero_inicial.objetivoPeonAlPaso == (2, 4)
     tablero_inicial.moverPieza((6, 0), (5, 0)) # Negro mueve a6
@@ -331,15 +461,32 @@ def test_moverPieza_enPassant_ok(tablero_inicial: Tablero):
     """
     Prueba una captura al paso válida.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+        def registrarPosicion(self, posicion):
+            pass
+            
+        def actualizarEstadoJuego(self):
+            pass
+            
+    juego_mock = JuegoMock()
+    tablero_inicial.juego = juego_mock
+    
     # Configuración: Peón blanco en e5, Peón negro en d7. Negro mueve d7->d5
     tablero_inicial.setPieza((4, 4), Peon('blanco', (4, 4), tablero_inicial)) # Pass tablero
     tablero_inicial.setPieza((1, 4), None) # Vaciar e2
-    tablero_inicial.turno_blanco = False # Turno Negro
+    juego_mock.turno_blanco = False # Turno Negro
 
     # Negro mueve d7->d5
     tablero_inicial.moverPieza((6, 3), (4, 3)) # Peón negro d5
     assert tablero_inicial.objetivoPeonAlPaso == (5, 3), "Objetivo al paso debe ser d6 (5, 3)."
-    assert tablero_inicial.turno_blanco is True # Turno Blanco
+    assert juego_mock.turno_blanco is True # Turno Blanco
 
     # Blanco captura al paso exd6
     origen_blanco = (4, 4) # e5
@@ -357,8 +504,7 @@ def test_moverPieza_enPassant_ok(tablero_inicial: Tablero):
     assert tablero_inicial.getPieza(casilla_peon_capturado) is None, "Casilla del peón negro capturado (d5) debe estar vacía."
     assert pieza_negra_capturada in tablero_inicial.piezasCapturadas, "Peón negro debe estar en capturadas."
     assert tablero_inicial.objetivoPeonAlPaso is None, "Objetivo al paso debe limpiarse después de la captura."
-    assert tablero_inicial.turno_blanco is False # Turno Negro
-    assert tablero_inicial.contadorRegla50Movimientos == 0, "Contador 50 mov se resetea por captura."
+    assert juego_mock.turno_blanco is False # Turno Negro
 
 # --- Promoción ---
 
@@ -366,9 +512,26 @@ def test_moverPieza_promocion_necesaria_blanco(tablero_vacio: Tablero):
     """
     Verifica que mover un peón blanco a la 8va fila retorna 'promocion_necesaria'.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = True
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+        def registrarPosicion(self, posicion):
+            pass
+            
+        def actualizarEstadoJuego(self):
+            pass
+            
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
+    
     peon_blanco = Peon('blanco', (6, 0), tablero_vacio)
     tablero_vacio.setPieza((6, 0), peon_blanco) # Peón blanco en a7
-    tablero_vacio.turno_blanco = True
+    juego_mock.turno_blanco = True
 
     resultado = tablero_vacio.moverPieza((6, 0), (7, 0)) # Mueve a a8
 
@@ -378,15 +541,32 @@ def test_moverPieza_promocion_necesaria_blanco(tablero_vacio: Tablero):
     assert isinstance(tablero_vacio.getPieza((7, 0)), Peon)
     assert tablero_vacio.getPieza((7, 0)) is peon_blanco
     assert peon_blanco.posicion == (7, 0)
-    assert tablero_vacio.turno_blanco is False # Turno cambió
+    assert juego_mock.turno_blanco is False # Turno cambió
 
 def test_moverPieza_promocion_necesaria_negro(tablero_vacio: Tablero):
     """
     Verifica que mover un peón negro a la 1ra fila retorna 'promocion_necesaria'.
     """
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.turno_blanco = False
+            
+        def cambiarTurno(self):
+            self.turno_blanco = not self.turno_blanco
+            
+        def registrarPosicion(self, posicion):
+            pass
+            
+        def actualizarEstadoJuego(self):
+            pass
+            
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
+    
     peon_negro = Peon('negro', (1, 7), tablero_vacio)
     tablero_vacio.setPieza((1, 7), peon_negro) # Peón negro en h2
-    tablero_vacio.turno_blanco = False # Turno negro
+    juego_mock.turno_blanco = False # Turno negro
 
     resultado = tablero_vacio.moverPieza((1, 7), (0, 7)) # Mueve a h1
 
@@ -395,7 +575,7 @@ def test_moverPieza_promocion_necesaria_negro(tablero_vacio: Tablero):
     assert isinstance(tablero_vacio.getPieza((0, 7)), Peon)
     assert tablero_vacio.getPieza((0, 7)) is peon_negro
     assert peon_negro.posicion == (0, 7)
-    assert tablero_vacio.turno_blanco is True # Turno cambió
+    assert juego_mock.turno_blanco is True # Turno cambió
 
 # --- Enroque ---
 
@@ -466,7 +646,23 @@ def test_realizarEnroque_corto_blanco_ok(tablero_vacio: Tablero):
     tablero_vacio.setPieza((0, 7), torre)
     tablero_vacio.derechosEnroque['blanco']['corto'] = True
     tablero_vacio.derechosEnroque['blanco']['largo'] = True # Dejar el largo también para ver que no se afecta innecesariamente
-    tablero_vacio.turno_blanco = True
+    
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.color = None
+            self.tipo = None
+            self.rey_origen = None
+            self.rey_destino = None
+            
+        def procesarEnroqueRealizado(self, color, tipo, rey_pos_origen, rey_pos_destino):
+            self.color = color
+            self.tipo = tipo
+            self.rey_origen = rey_pos_origen
+            self.rey_destino = rey_pos_destino
+    
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
 
     resultado = tablero_vacio.realizarEnroque('blanco', 'corto')
 
@@ -479,10 +675,13 @@ def test_realizarEnroque_corto_blanco_ok(tablero_vacio: Tablero):
     assert torre.posicion == (0, 5), "Posición interna de la Torre debe ser f1."
     assert tablero_vacio.derechosEnroque['blanco']['corto'] is False, "Derecho corto blanco perdido."
     assert tablero_vacio.derechosEnroque['blanco']['largo'] is False, "Derecho largo blanco perdido (movimiento de rey)."
-    assert tablero_vacio.turno_blanco is False, "Turno debe pasar a negras."
-    assert tablero_vacio.contadorRegla50Movimientos == 1, "Contador 50 mov avanza (no peón, no captura)."
     assert tablero_vacio.ultimo_movimiento == ((0, 4), (0, 6)), "Último mov registrado (mov rey)."
-    assert tablero_vacio.historial_movimientos[-1] == ('blanco', (0, 4), (0, 6)), "Historial registra mov rey."
+    
+    # Verificar delegación al juego
+    assert juego_mock.color == 'blanco', "Color de enroque debe delegarse"
+    assert juego_mock.tipo == 'corto', "Tipo de enroque debe delegarse"
+    assert juego_mock.rey_origen == (0, 4), "Posición origen del rey debe delegarse"
+    assert juego_mock.rey_destino == (0, 6), "Posición destino del rey debe delegarse"
 
 def test_realizarEnroque_largo_negro_ok(tablero_vacio: Tablero):
     """
@@ -495,7 +694,23 @@ def test_realizarEnroque_largo_negro_ok(tablero_vacio: Tablero):
     tablero_vacio.setPieza((7, 0), torre)
     tablero_vacio.derechosEnroque['negro']['corto'] = True
     tablero_vacio.derechosEnroque['negro']['largo'] = True
-    tablero_vacio.turno_blanco = False # Turno negro
+    
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.color = None
+            self.tipo = None
+            self.rey_origen = None
+            self.rey_destino = None
+            
+        def procesarEnroqueRealizado(self, color, tipo, rey_pos_origen, rey_pos_destino):
+            self.color = color
+            self.tipo = tipo
+            self.rey_origen = rey_pos_origen
+            self.rey_destino = rey_pos_destino
+    
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
 
     resultado = tablero_vacio.realizarEnroque('negro', 'largo')
 
@@ -508,10 +723,13 @@ def test_realizarEnroque_largo_negro_ok(tablero_vacio: Tablero):
     assert torre.posicion == (7, 3), "Posición interna de la Torre debe ser d8."
     assert tablero_vacio.derechosEnroque['negro']['corto'] is False, "Derecho corto negro perdido."
     assert tablero_vacio.derechosEnroque['negro']['largo'] is False, "Derecho largo negro perdido."
-    assert tablero_vacio.turno_blanco is True, "Turno debe pasar a blancas."
-    assert tablero_vacio.contadorRegla50Movimientos == 1
     assert tablero_vacio.ultimo_movimiento == ((7, 4), (7, 2))
-    assert tablero_vacio.historial_movimientos[-1] == ('negro', (7, 4), (7, 2))
+    
+    # Verificar delegación al juego
+    assert juego_mock.color == 'negro', "Color de enroque debe delegarse"
+    assert juego_mock.tipo == 'largo', "Tipo de enroque debe delegarse"
+    assert juego_mock.rey_origen == (7, 4), "Posición origen del rey debe delegarse"
+    assert juego_mock.rey_destino == (7, 2), "Posición destino del rey debe delegarse"
 
 def test_realizarEnroque_error_pieza_incorrecta(tablero_vacio: Tablero):
     """
@@ -1075,3 +1293,175 @@ def test_obtener_todos_movimientos_legales_filtra_jaque(tablero_vacio: Tablero):
 # ==================================================================
 # Pruebas de Simulación y Verificación de Seguridad del Rey
 # ==================================================================
+
+def test_encontrarRey(tablero_inicial: Tablero):
+    """
+    Verifica que el método encontrarRey localiza correctamente el rey de un color específico.
+    """
+    # Posición inicial estándar
+    pos_rey_blanco = tablero_inicial.encontrarRey('blanco')
+    pos_rey_negro = tablero_inicial.encontrarRey('negro')
+    
+    assert pos_rey_blanco == (0, 4), "Rey blanco debe estar en e1 (0,4) en posición inicial"
+    assert pos_rey_negro == (7, 4), "Rey negro debe estar en e8 (7,4) en posición inicial"
+    
+    # Probar con tablero vacío
+    tablero_vacio = Tablero()
+    tablero_vacio.casillas = [[None for _ in range(8)] for _ in range(8)]
+    
+    # Añadir un solo rey en posición no estándar
+    rey_b = Rey('blanco', (3, 3), tablero_vacio)
+    tablero_vacio.setPieza((3, 3), rey_b)
+    
+    pos_rey = tablero_vacio.encontrarRey('blanco')
+    assert pos_rey == (3, 3), "Rey blanco debe ser encontrado en posición personalizada"
+    
+    # Rey no presente
+    pos_rey_ausente = tablero_vacio.encontrarRey('negro')
+    assert pos_rey_ausente is None, "Rey negro no presente debe retornar None"
+
+def test_actualizarUltimoMovimiento_delegacion(tablero_vacio: Tablero):
+    """
+    Verifica que actualizarUltimoMovimiento almacena localmente y delega al juego.
+    """
+    # Crear un mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.ultimo_movimiento = None
+            
+        def actualizarUltimoMovimiento(self, origen, destino):
+            self.ultimo_movimiento = (origen, destino)
+    
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
+    
+    origen = (0, 0)
+    destino = (0, 1)
+    
+    tablero_vacio.actualizarUltimoMovimiento(origen, destino)
+    
+    # Verificar almacenamiento local
+    assert tablero_vacio.ultimo_movimiento == (origen, destino), "Último movimiento debe guardarse localmente"
+    
+    # Verificar delegación al juego
+    assert juego_mock.ultimo_movimiento == (origen, destino), "Último movimiento debe delegarse al juego"
+
+def test_actualizarEstadoJuego_delegacion(tablero_vacio: Tablero):
+    """
+    Verifica que actualizarEstadoJuego delega al método juego.actualizarEstadoJuego().
+    """
+    # Crear un mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.estado_juego_actualizado = False
+            
+        def actualizarEstadoJuego(self):
+            self.estado_juego_actualizado = True
+    
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
+    
+    tablero_vacio.actualizarEstadoJuego()
+    
+    # Verificar que se llamó al método del juego
+    assert juego_mock.estado_juego_actualizado is True, "El método juego.actualizarEstadoJuego() debe ser llamado"
+    
+    # Probar sin juego (no debería dar error)
+    tablero_vacio.juego = None
+    tablero_vacio.actualizarEstadoJuego()  # No debería lanzar excepción
+    
+def test_realizarEnroque_corto_blanco_ok(tablero_vacio: Tablero):
+    """
+    Prueba la ejecución del enroque corto blanco (asumiendo validez).
+    """
+    # Setup: Rey en e1, Torre en h1, casillas f1, g1 vacías. Derechos OK.
+    rey = Rey('blanco', (0, 4), tablero_vacio)
+    torre = Torre('blanco', (0, 7), tablero_vacio)
+    tablero_vacio.setPieza((0, 4), rey)
+    tablero_vacio.setPieza((0, 7), torre)
+    tablero_vacio.derechosEnroque['blanco']['corto'] = True
+    tablero_vacio.derechosEnroque['blanco']['largo'] = True # Dejar el largo también para ver que no se afecta innecesariamente
+    
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.color = None
+            self.tipo = None
+            self.rey_origen = None
+            self.rey_destino = None
+            
+        def procesarEnroqueRealizado(self, color, tipo, rey_pos_origen, rey_pos_destino):
+            self.color = color
+            self.tipo = tipo
+            self.rey_origen = rey_pos_origen
+            self.rey_destino = rey_pos_destino
+    
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
+
+    resultado = tablero_vacio.realizarEnroque('blanco', 'corto')
+
+    assert resultado is True
+    assert tablero_vacio.getPieza((0, 4)) is None, "e1 debe estar vacío."
+    assert tablero_vacio.getPieza((0, 7)) is None, "h1 debe estar vacío."
+    assert tablero_vacio.getPieza((0, 6)) is rey, "Rey debe estar en g1."
+    assert tablero_vacio.getPieza((0, 5)) is torre, "Torre debe estar en f1."
+    assert rey.posicion == (0, 6), "Posición interna del Rey debe ser g1."
+    assert torre.posicion == (0, 5), "Posición interna de la Torre debe ser f1."
+    assert tablero_vacio.derechosEnroque['blanco']['corto'] is False, "Derecho corto blanco perdido."
+    assert tablero_vacio.derechosEnroque['blanco']['largo'] is False, "Derecho largo blanco perdido (movimiento de rey)."
+    assert tablero_vacio.ultimo_movimiento == ((0, 4), (0, 6)), "Último mov registrado (mov rey)."
+    
+    # Verificar delegación al juego
+    assert juego_mock.color == 'blanco', "Color de enroque debe delegarse"
+    assert juego_mock.tipo == 'corto', "Tipo de enroque debe delegarse"
+    assert juego_mock.rey_origen == (0, 4), "Posición origen del rey debe delegarse"
+    assert juego_mock.rey_destino == (0, 6), "Posición destino del rey debe delegarse"
+
+def test_realizarEnroque_largo_negro_ok(tablero_vacio: Tablero):
+    """
+    Prueba la ejecución del enroque largo negro (asumiendo validez).
+    """
+    # Setup: Rey en e8, Torre en a8, casillas b8, c8, d8 vacías. Derechos OK.
+    rey = Rey('negro', (7, 4), tablero_vacio)
+    torre = Torre('negro', (7, 0), tablero_vacio)
+    tablero_vacio.setPieza((7, 4), rey)
+    tablero_vacio.setPieza((7, 0), torre)
+    tablero_vacio.derechosEnroque['negro']['corto'] = True
+    tablero_vacio.derechosEnroque['negro']['largo'] = True
+    
+    # Crear mock para juego
+    class JuegoMock:
+        def __init__(self):
+            self.color = None
+            self.tipo = None
+            self.rey_origen = None
+            self.rey_destino = None
+            
+        def procesarEnroqueRealizado(self, color, tipo, rey_pos_origen, rey_pos_destino):
+            self.color = color
+            self.tipo = tipo
+            self.rey_origen = rey_pos_origen
+            self.rey_destino = rey_pos_destino
+    
+    juego_mock = JuegoMock()
+    tablero_vacio.juego = juego_mock
+
+    resultado = tablero_vacio.realizarEnroque('negro', 'largo')
+
+    assert resultado is True
+    assert tablero_vacio.getPieza((7, 4)) is None, "e8 debe estar vacío."
+    assert tablero_vacio.getPieza((7, 0)) is None, "a8 debe estar vacío."
+    assert tablero_vacio.getPieza((7, 2)) is rey, "Rey debe estar en c8."
+    assert tablero_vacio.getPieza((7, 3)) is torre, "Torre debe estar en d8."
+    assert rey.posicion == (7, 2), "Posición interna del Rey debe ser c8."
+    assert torre.posicion == (7, 3), "Posición interna de la Torre debe ser d8."
+    assert tablero_vacio.derechosEnroque['negro']['corto'] is False, "Derecho corto negro perdido."
+    assert tablero_vacio.derechosEnroque['negro']['largo'] is False, "Derecho largo negro perdido."
+    assert tablero_vacio.ultimo_movimiento == ((7, 4), (7, 2))
+    
+    # Verificar delegación al juego
+    assert juego_mock.color == 'negro', "Color de enroque debe delegarse"
+    assert juego_mock.tipo == 'largo', "Tipo de enroque debe delegarse"
+    assert juego_mock.rey_origen == (7, 4), "Posición origen del rey debe delegarse"
+    assert juego_mock.rey_destino == (7, 2), "Posición destino del rey debe delegarse"
