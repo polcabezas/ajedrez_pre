@@ -1,0 +1,6 @@
+# Requirements for the Chess project.
+# This file lists the external Python libraries needed to run the application.
+
+pygame
+pytest
+python-dotenv
