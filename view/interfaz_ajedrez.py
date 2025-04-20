@@ -77,7 +77,7 @@ class InterfazAjedrez:
         # Estado de los menús desplegables
         self.dropdown_tipo_juego = {
             'abierto': False,
-            'opciones': ['Clásico', 'Rápido', 'Blitz'],
+            'opciones': ['Clásico (90 minutos + 30 segundos/movimiento)', 'Rápido (25 minutos + 10 segundos/movimiento)', 'Blitz (3 minutos + 2 segundos/movimiento o 5 minutos en total)'],
             'seleccionado': 'Escoge el tipo de juego',
         }
         
