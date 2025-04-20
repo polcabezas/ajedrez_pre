@@ -360,9 +360,10 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         self.assertTrue(hasattr(self.mock_modelo_instancia, 'estado'))
         
         # >>> AÑADIR: Verificar que el turno se actualizó en la vista <<<
+        # Corrección: Verificar llamada al método en lugar de atributo directo
         # Asumimos que getTurnoColor devuelve el *nuevo* turno después del movimiento
         nuevo_turno_esperado = self.mock_modelo_instancia.getTurnoColor.return_value
-        self.assertEqual(self.mock_vista_instancia.turno_actual, nuevo_turno_esperado)
+        self.mock_vista_instancia.cambiar_turno_temporizador.assert_called_once_with(nuevo_turno_esperado)
 
     def test_clic_en_destino_invalido(self):
         """ Verifica que hacer clic fuera de los movs válidos deselecciona. """
@@ -519,9 +520,7 @@ class TestControladorActualizacionDisplay(unittest.TestCase):
         self.mock_modelo_instancia.obtener_datos_display.assert_called_once()
         
         # Verificar que los datos en la vista (mock) se actualizaron
-        self.assertEqual(self.mock_vista_instancia.jugadores['blanco']['tiempo'], '09:50')
-        self.assertEqual(self.mock_vista_instancia.jugadores['blanco']['piezas_capturadas'], [])
-        self.assertEqual(self.mock_vista_instancia.jugadores['negro']['tiempo'], '09:45')
-        self.assertEqual(self.mock_vista_instancia.jugadores['negro']['piezas_capturadas'], [mock_pieza_capturada_b])
-        # Verificar que el turno también se actualizó
-        self.assertEqual(self.mock_vista_instancia.turno_actual, 'negro')
+        self.assertEqual(self.mock_vista_instancia.jugadores['blanco']['piezas_capturadas'], []) # Blancas captura Negras (ninguna en este mock)
+        self.assertEqual(self.mock_vista_instancia.jugadores['negro']['piezas_capturadas'], [mock_pieza_capturada_b]) # Negras captura Blancas
+        # Verificar que el método para cambiar el turno en la vista fue llamado
+        self.mock_vista_instancia.cambiar_turno_temporizador.assert_called_with('negro')

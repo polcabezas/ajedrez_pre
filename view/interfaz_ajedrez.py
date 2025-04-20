@@ -6,6 +6,7 @@ import pygame.font
 from typing import Dict, List, Tuple, Optional, Literal, Union, Callable
 import os
 import math
+import time # Añadir import para time
 import logging
 
 # Configuración del logger para este módulo
@@ -80,7 +81,7 @@ class InterfazAjedrez:
         # Estado de los menús desplegables
         self.dropdown_tipo_juego = {
             'abierto': False,
-            'opciones': ['Clásico', 'Rápido', 'Blitz'],
+            'opciones': ['Clásico (90 minutos + 30 segundos/movimiento)', 'Rápido (25 minutos + 10 segundos/movimiento)', 'Blitz (3 minutos + 2 segundos/movimiento o 5 minutos en total)'],
             'seleccionado': 'Escoge el tipo de juego',
         }
         
@@ -94,11 +95,14 @@ class InterfazAjedrez:
         self.elementos_ui = {}
         self._inicializar_ui()
         
-        # Información de jugadores
+        # Información de jugadores y temporizador
         self.jugadores = {
             'blanco': {'nombre': 'Jugador 1', 'tiempo': '00:00', 'piezas_capturadas': []},
             'negro': {'nombre': 'Jugador 2', 'tiempo': '00:00', 'piezas_capturadas': []},
         }
+        self.tiempo_acumulado = {'blanco': 0, 'negro': 0} # Tiempo en milisegundos
+        self.tiempo_inicio_turno = None # Momento (ticks) en que empezó el turno actual
+        self.temporizador_activo = False
         
         # Inicializar recursos gráficos (piezas)
         self.imagenes_piezas = self._cargar_imagenes_piezas()
@@ -142,7 +146,7 @@ class InterfazAjedrez:
         
         # Posiciones para la vista del tablero (Ajustadas)
         self.elementos_ui['tablero'] = {
-            'tablero_pos': (500, 370),  # Bajado de 350 a 370
+            'tablero_pos': (500, 400),  # Bajado de 370 a 400 para más espacio arriba
             'panel_izq_pos': (0, 0),
             'panel_der_pos': (800, 0),
             'reloj_pos': (500, 40),   # Subido de 50 a 40
@@ -529,17 +533,14 @@ class InterfazAjedrez:
     def _dibujar_reloj(self):
         """
         Dibuja el reloj/temporizador en la parte superior con fondo gris claro.
-        Ahora usa los tiempos del diccionario self.jugadores.
+        Ahora usa los tiempos del diccionario self.jugadores (actualizados en 'actualizar').
         """
-        # Obtener tiempo del jugador cuyo turno es
-        tiempo_blanco = self.jugadores['blanco'].get('tiempo', '--:--')
-        tiempo_negro = self.jugadores['negro'].get('tiempo', '--:--')
+        # Obtener tiempo del jugador cuyo turno es (ya formateados)
+        tiempo_blanco = self.jugadores['blanco'].get('tiempo', '00:00')
+        tiempo_negro = self.jugadores['negro'].get('tiempo', '00:00')
         
-        # Mostrar ambos tiempos puede ser más útil
+        # Mostrar ambos tiempos
         texto_tiempo = f"B: {tiempo_blanco} | N: {tiempo_negro}"
-        # O solo el del jugador activo:
-        # tiempo_activo = tiempo_blanco if self.turno_actual == 'blanco' else tiempo_negro
-        # texto_tiempo = tiempo_activo
         
         color_texto = self.COLORES['gris_oscuro']
         color_fondo = self.COLORES['gris_claro']
@@ -558,7 +559,6 @@ class InterfazAjedrez:
         fondo_rect.center = pos_centro
 
         # Dibujar el rectángulo de fondo 
-        # (Pygame no tiene esquinas redondeadas fáciles, usamos rect normal)
         pygame.draw.rect(self.ventana, color_fondo, fondo_rect)
 
         # Centrar el texto dentro del rectángulo de fondo
@@ -640,12 +640,95 @@ class InterfazAjedrez:
             rect = imagen.get_rect(center=(x + tamaño_casilla/2, y + tamaño_casilla/2))
             self.ventana.blit(imagen, rect)
     
+    # --- Métodos para el Temporizador ---
+
+    def iniciar_temporizador(self):
+        """
+        Inicia el temporizador del juego. Reinicia tiempos acumulados
+        y registra el inicio del primer turno.
+        """
+        print("[Interfaz] Iniciando temporizador...") # Log
+        self.tiempo_acumulado = {'blanco': 0, 'negro': 0}
+        self.tiempo_inicio_turno = pygame.time.get_ticks()
+        self.temporizador_activo = True
+        self.turno_actual = 'blanco' # Asegurar que empieza blanco
+        # Actualizar inmediatamente la pantalla para mostrar 00:00
+        self._actualizar_display_tiempos()
+
+    def detener_temporizador(self):
+        """ Detiene el temporizador (por ejemplo, al final del juego). """
+        print("[Interfaz] Deteniendo temporizador...") # Log
+        # Acumular el último fragmento de tiempo del jugador actual
+        if self.temporizador_activo and self.tiempo_inicio_turno is not None:
+            tiempo_transcurrido = pygame.time.get_ticks() - self.tiempo_inicio_turno
+            self.tiempo_acumulado[self.turno_actual] += tiempo_transcurrido
+        self.temporizador_activo = False
+        self.tiempo_inicio_turno = None # Indicar que no hay turno activo en el timer
+        self._actualizar_display_tiempos() # Actualizar una última vez
+
+    def cambiar_turno_temporizador(self, nuevo_turno: str):
+        """
+        Gestiona el cambio de turno en el temporizador.
+        Acumula el tiempo del jugador anterior y reinicia el contador para el nuevo.
+
+        Args:
+            nuevo_turno: El color del jugador cuyo turno comienza ('blanco' o 'negro').
+        """
+        if not self.temporizador_activo or self.tiempo_inicio_turno is None:
+            print("[Interfaz Warning] Se intentó cambiar turno sin temporizador activo.")
+            # Aún así, actualizamos el turno visualmente
+            self.turno_actual = nuevo_turno
+            return
+
+        # Calcular tiempo transcurrido en el turno que termina
+        tiempo_transcurrido = pygame.time.get_ticks() - self.tiempo_inicio_turno
+        
+        # Acumular tiempo para el jugador que acaba de mover
+        self.tiempo_acumulado[self.turno_actual] += tiempo_transcurrido
+        print(f"[Interfaz] Tiempo acumulado {self.turno_actual}: {self.tiempo_acumulado[self.turno_actual]/1000:.2f}s") # Log
+        
+        # Actualizar al nuevo turno
+        self.turno_actual = nuevo_turno
+        
+        # Registrar el inicio del nuevo turno
+        self.tiempo_inicio_turno = pygame.time.get_ticks()
+        
+        # Actualizar la visualización inmediatamente
+        self._actualizar_display_tiempos()
+
+    def _formatear_tiempo(self, milisegundos: int) -> str:
+        """ Convierte milisegundos a formato MM:SS. """
+        if milisegundos < 0: milisegundos = 0 # Evitar tiempos negativos
+        total_segundos = milisegundos // 1000
+        minutos = total_segundos // 60
+        segundos = total_segundos % 60
+        return f"{minutos:02}:{segundos:02}"
+
+    def _actualizar_display_tiempos(self):
+        """
+        Calcula los tiempos actuales (acumulado + transcurrido_turno_actual si aplica)
+        y actualiza el diccionario self.jugadores para que _dibujar_reloj los use.
+        """
+        tiempo_actual_ms = pygame.time.get_ticks()
+        
+        for color in ['blanco', 'negro']:
+            tiempo_total_ms = self.tiempo_acumulado[color]
+            # Si es el turno del jugador actual y el timer está activo, añadir tiempo transcurrido
+            if self.temporizador_activo and color == self.turno_actual and self.tiempo_inicio_turno is not None:
+                 tiempo_transcurrido_turno = tiempo_actual_ms - self.tiempo_inicio_turno
+                 tiempo_total_ms += tiempo_transcurrido_turno
+                 
+            self.jugadores[color]['tiempo'] = self._formatear_tiempo(tiempo_total_ms)
+
+    # ----------------------------------
+    
     def _iniciar_juego(self):
         """
         Cambia a la vista del tablero e inicia el juego.
         """
         self.vista_actual = 'tablero'
-        # Aquí se podría notificar al controlador para iniciar el juego
+        self.iniciar_temporizador() # Iniciar el temporizador al cambiar a la vista tablero
+        # Aquí se podría notificar al controlador para iniciar el juego (si no lo hizo ya)
     
     def manejar_eventos(self):
         """
@@ -810,6 +893,8 @@ class InterfazAjedrez:
         if self.vista_actual == 'configuracion':
             self.dibujar_pantalla_configuracion()
         elif self.vista_actual == 'tablero' and tablero:
+            # Actualizar los strings de tiempo ANTES de dibujar
+            self._actualizar_display_tiempos()
             self.dibujar_pantalla_tablero(tablero)
         
         pygame.display.flip()
@@ -823,6 +908,13 @@ class InterfazAjedrez:
         """
         if vista in ['configuracion', 'tablero']:
             self.vista_actual = vista
+            if vista == 'tablero' and not self.temporizador_activo:
+                 # Si cambiamos a tablero y el timer no estaba activo, iniciarlo.
+                 # Esto es útil si el controlador cambia la vista externamente.
+                 self.iniciar_temporizador()
+            elif vista == 'configuracion' and self.temporizador_activo:
+                 # Si volvemos a configuración, detener el timer.
+                 self.detener_temporizador()
     
     def obtener_configuracion(self):
         """
@@ -844,16 +936,6 @@ class InterfazAjedrez:
         self.mensaje_estado = texto
         # Podríamos añadir lógica para que mensajes no persistentes desaparezcan
         # después de un tiempo, pero por ahora se mantienen hasta el siguiente cambio.
-    
-    def cambiar_vista(self, vista):
-        """
-        Cambia la vista actual.
-        
-        Args:
-            vista: String que indica la vista ('configuracion' o 'tablero').
-        """
-        if vista in ['configuracion', 'tablero']:
-            self.vista_actual = vista
     
     def obtener_configuracion(self):
         """

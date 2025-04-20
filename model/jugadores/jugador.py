@@ -4,7 +4,7 @@ Define la clase base abstracta para los jugadores del juego de ajedrez.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Literal, Tuple, TYPE_CHECKING
+from typing import Literal, Tuple
 
 # Evitar importación circular para type hints
 # Comentar o eliminar este bloque

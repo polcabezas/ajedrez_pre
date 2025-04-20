@@ -251,19 +251,26 @@ class ControladorJuego:
         # === Obtener TODOS los datos necesarios del modelo ===
         try:
             nuevo_turno = self.modelo.getTurnoColor()
+            
+            # === Actualizar Temporizador en la Vista PRIMERO ===
+            # Asegurarse de llamar a esto antes de actualizar el resto de la UI que podría depender del turno
+            self.vista.cambiar_turno_temporizador(nuevo_turno)
+            
             # Usar el nuevo método para obtener todos los datos para la vista
             datos_display = self.modelo.obtener_datos_display()
             estado_juego = self.modelo.getEstadoJuego() 
             
             logger.debug("Nuevo turno: %s, Estado: %s, Datos Display: %s", nuevo_turno, estado_juego, datos_display)
             
-            # === Actualizar Vista ===
-            # Actualizar turno en la vista
-            self.vista.turno_actual = nuevo_turno
+            # === Actualizar Resto de la Vista ===
+            # Actualizar turno visualmente (ya se hizo en cambiar_turno_temporizador, pero redundancia no daña)
+            # self.vista.turno_actual = nuevo_turno # Comentado ya que cambiar_turno_temporizador lo hace
+            
             # Actualizar datos de jugadores (nombre se mantiene, tiempo y capturas cambian)
-            self.vista.jugadores['blanco']['tiempo'] = datos_display['blanco']['tiempo']
+            # NOTA: Los tiempos ahora se actualizan en vista.actualizar(), no necesitamos pasarlos aquí.
+            # self.vista.jugadores['blanco']['tiempo'] = datos_display['blanco']['tiempo'] # Comentado
             self.vista.jugadores['blanco']['piezas_capturadas'] = datos_display['blanco']['capturadas']
-            self.vista.jugadores['negro']['tiempo'] = datos_display['negro']['tiempo']
+            # self.vista.jugadores['negro']['tiempo'] = datos_display['negro']['tiempo'] # Comentado
             self.vista.jugadores['negro']['piezas_capturadas'] = datos_display['negro']['capturadas']
             
             # Actualizar mensaje de estado
