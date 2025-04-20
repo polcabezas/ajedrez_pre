@@ -7,6 +7,10 @@ from typing import Dict, List, Tuple, Optional, Literal, Union, Callable
 import os
 import math
 import time # Añadir import para time
+import logging
+
+# Configuración del logger para este módulo
+logger = logging.getLogger(__name__)
 
 class InterfazAjedrez:
     """

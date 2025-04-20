@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 """
 Define la clase base abstracta para los jugadores del juego de ajedrez.
 """
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Literal, Tuple, TYPE_CHECKING
+from typing import Literal, Tuple
 
 # Evitar importación circular para type hints
 # Comentar o eliminar este bloque
@@ -75,7 +77,7 @@ class Jugador(ABC):
         return self._color
 
     @abstractmethod
-    def solicitarMovimiento(self, juego: 'Juego') -> MoveInfo:
+    def solicitarMovimiento(self, juego: Juego) -> MoveInfo:
         """
         Método abstracto para que el jugador determine y devuelva su próximo movimiento.
 
