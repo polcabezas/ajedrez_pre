@@ -22,7 +22,7 @@ HIGHLIGHT_COLOR = (255, 255, 0, 150) # Amarillo semitransparente para resaltar
 # Los nombres de archivo deben coincidir (p.ej., 'wP.png', 'bR.png').
 # Si no tienes imágenes, se mostrará texto como placeholder.
 IMAGES = {}
-PIECE_NAMES = ['Peon blanco', 'Torre blanca', 'Caballo blanco', 'Alfil blanco', 'Reina blanca', 'Rey blanco', 'Peon Negro', 'Torre negra', 'Caballo negro', 'Alfil negro', 'Reina negra', 'Rey negro']
+PIECE_NAMES = ['Peon blanco', 'Torre blanco', 'Caballo blanco', 'Alfil blanco', 'Reina blanco', 'Rey blanco', 'Peon Negro', 'Torre negro', 'Caballo negro', 'Alfil negro', 'Reina negro', 'Rey negro']
 IMAGE_PATH = 'assets/imagenes_piezas/' # Cambia si tus imágenes están en otro lugar
 
 def load_images():
