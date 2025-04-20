@@ -32,8 +32,8 @@ class InterfazAjedrez:
     # Constantes de dimensiones
     DIMENSIONES = {
         'ventana': (1000, 700),
-        'tablero': 600,  # Tamaño del tablero (cuadrado)
-        'casilla': 75,  # Tamaño de cada casilla (75x75 px)
+        'tablero': 560,  # Reducido de 600 a 560
+        'casilla': 70,  # Calculado como 560 / 8
         'panel_lateral': 200,  # Ancho de los paneles laterales
         'boton': (150, 50),  # Tamaño de botones
         'dropdown': (250, 50),  # Tamaño de menús desplegables
@@ -134,12 +134,12 @@ class InterfazAjedrez:
             'boton_jugar_pos': (centro_x, boton_jugar_y),
         }
         
-        # Posiciones para la vista del tablero (Sin cambios)
+        # Posiciones para la vista del tablero (Ajustadas)
         self.elementos_ui['tablero'] = {
-            'tablero_pos': (500, 350),  # Centro del tablero
+            'tablero_pos': (500, 370),  # Bajado de 350 a 370
             'panel_izq_pos': (0, 0),
             'panel_der_pos': (800, 0),
-            'reloj_pos': (500, 50),
+            'reloj_pos': (500, 40),   # Subido de 50 a 40
         }
     
     def _cargar_imagenes_piezas(self) -> Dict[str, Dict[str, Optional[pygame.Surface]]]:
@@ -152,7 +152,8 @@ class InterfazAjedrez:
             Devuelve None para una pieza si la imagen no se encuentra o no se puede cargar.
         """
         piezas = {'blanco': {}, 'negro': {}}
-        tamaño_pieza = self.DIMENSIONES['casilla'] - 10  # Tamaño ligeramente menor que la casilla
+        # Usar el tamaño de casilla actualizado para calcular el tamaño de pieza
+        tamaño_pieza = self.DIMENSIONES['casilla'] - 10 # Ahora 70 - 10 = 60
         ruta_base = os.path.join('assets', 'imagenes_piezas')
 
         # Mapeo de nombres internos a nombres de archivo (ajustar si es necesario)
@@ -435,12 +436,32 @@ class InterfazAjedrez:
     
     def _dibujar_reloj(self):
         """
-        Dibuja el reloj/temporizador en la parte superior.
+        Dibuja el reloj/temporizador en la parte superior con fondo gris claro.
         """
-        tiempo = "00:00"  # Obtener del controlador/modelo
-        texto_tiempo = self.fuente_titulo.render(tiempo, True, self.COLORES['gris_oscuro'])
-        rect_tiempo = texto_tiempo.get_rect(center=self.elementos_ui['tablero']['reloj_pos'])
-        self.ventana.blit(texto_tiempo, rect_tiempo)
+        tiempo = "00:00"  # Obtener del controlador/modelo en el futuro
+        color_texto = self.COLORES['gris_oscuro']
+        color_fondo = self.COLORES['gris_claro']
+        fuente_reloj = self.fuente_normal # Usar fuente más pequeña
+        padding = 10 # Espacio entre el texto y el borde del fondo
+
+        # Renderizar el texto para obtener su tamaño
+        texto_surf = fuente_reloj.render(tiempo, True, color_texto)
+        texto_rect = texto_surf.get_rect()
+
+        # Calcular tamaño y posición del rectángulo de fondo
+        fondo_ancho = texto_rect.width + 2 * padding
+        fondo_alto = texto_rect.height + 2 * padding
+        pos_centro = self.elementos_ui['tablero']['reloj_pos']
+        fondo_rect = pygame.Rect(0, 0, fondo_ancho, fondo_alto)
+        fondo_rect.center = pos_centro
+
+        # Dibujar el rectángulo de fondo 
+        # (Pygame no tiene esquinas redondeadas fáciles, usamos rect normal)
+        pygame.draw.rect(self.ventana, color_fondo, fondo_rect)
+
+        # Centrar el texto dentro del rectángulo de fondo
+        texto_rect.center = fondo_rect.center
+        self.ventana.blit(texto_surf, texto_rect)
     
     def _dibujar_tablero(self, tablero):
         """
