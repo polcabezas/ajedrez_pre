@@ -6,6 +6,10 @@ import pygame.font
 from typing import Dict, List, Tuple, Optional, Literal, Union, Callable
 import os
 import math
+import logging
+
+# Configuración del logger para este módulo
+logger = logging.getLogger(__name__)
 
 class InterfazAjedrez:
     """

@@ -75,7 +75,7 @@ class Jugador(ABC):
         return self._color
 
     @abstractmethod
-    def solicitarMovimiento(self, juego: 'Juego') -> MoveInfo:
+    def solicitarMovimiento(self) -> MoveInfo:
         """
         Método abstracto para que el jugador determine y devuelva su próximo movimiento.
 
