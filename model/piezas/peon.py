@@ -123,7 +123,7 @@ class Peon(Pieza):
         destino_simple = (fila_actual + direccion, col_actual)
         if self.tablero.esPosicionValida(destino_simple) and self.tablero.getPieza(destino_simple) is None:
             # Comprobar seguridad
-            if self.tablero._simular_y_verificar_seguridad(self, destino_simple):
+            if self.tablero.validador_movimiento.simular_y_verificar_seguridad(self, destino_simple):
                 movimientos_legales.append(destino_simple)
 
                 # 2. Avance doble (solo si el avance simple es seguro y posible)
@@ -132,7 +132,7 @@ class Peon(Pieza):
                     # Comprobar camino libre y destino válido/vacío
                     if self.tablero.esPosicionValida(destino_doble) and self.tablero.getPieza(destino_doble) is None:
                         # Comprobar seguridad para avance doble
-                        if self.tablero._simular_y_verificar_seguridad(self, destino_doble):
+                        if self.tablero.validador_movimiento.simular_y_verificar_seguridad(self, destino_doble):
                             movimientos_legales.append(destino_doble)
 
         # 3. Capturas diagonales estándar
@@ -145,7 +145,7 @@ class Peon(Pieza):
                 pieza_en_destino = self.tablero.getPieza(destino_diag)
                 if pieza_en_destino is not None and pieza_en_destino.color == color_oponente:
                     # Comprobar seguridad para captura diagonal
-                    if self.tablero._simular_y_verificar_seguridad(self, destino_diag):
+                    if self.tablero.validador_movimiento.simular_y_verificar_seguridad(self, destino_diag):
                         movimientos_legales.append(destino_diag)
 
         # 4. Captura al paso (En Passant)
@@ -155,7 +155,7 @@ class Peon(Pieza):
             if objetivo_ep in [(fila_actual + direccion, col_actual - 1), (fila_actual + direccion, col_actual + 1)]:
                  # Comprobar seguridad para captura al paso
                  # La simulación se encarga de quitar el peón capturado correcto
-                 if self.tablero._simular_y_verificar_seguridad(self, objetivo_ep):
+                 if self.tablero.validador_movimiento.simular_y_verificar_seguridad(self, objetivo_ep):
                     movimientos_legales.append(objetivo_ep)
 
         return movimientos_legales 

@@ -98,13 +98,8 @@ class Rey(Pieza):
             if pieza_en_destino is not None and pieza_en_destino.color == self.color:
                 continue # Casilla ocupada por pieza amiga
 
-            # Verificar si la casilla destino está amenazada (Rey no puede moverse a una casilla atacada)
-            if self.tablero.esCasillaAmenazada(destino, color_oponente):
-                continue # No se puede mover a una casilla atacada
-
-            # Verificar si el movimiento deja al rey en jaque (King Safety Check - ¡NUEVO!)
-            # Aunque el destino no esté atacado, mover el rey podría REVELAR un ataque.
-            if self.tablero._simular_y_verificar_seguridad(self, destino):
+            # Simplificado: Solo comprobar si el movimiento es seguro mediante simulación
+            if self.tablero.validador_movimiento.simular_y_verificar_seguridad(self, destino):
                 movimientos_legales.append(destino)
 
         # 2. Verificar y añadir movimientos de Enroque
@@ -125,7 +120,7 @@ class Rey(Pieza):
         color_oponente = 'negro' if self.color == 'blanco' else 'blanco'
 
         # Condiciones iniciales: El rey no debe haberse movido y no debe estar en jaque.
-        if self.se_ha_movido or self.tablero.esCasillaAmenazada(self.posicion, color_oponente):
+        if self.se_ha_movido or self.tablero.validador_movimiento.esCasillaAmenazada(self.posicion, color_oponente):
             return [] # No se puede enrocar si el rey se ha movido o está en jaque
 
         # Coordenadas relevantes
@@ -146,8 +141,8 @@ class Rey(Pieza):
                 # Verificar casillas intermedias vacías
                 if all(self.tablero.getPieza(pos) is None for pos in casillas_intermedias_corto):
                     # Verificar que las casillas por las que pasa/a las que llega el rey no están atacadas
-                    if not self.tablero.esCasillaAmenazada(paso_rey_corto, color_oponente) and \
-                       not self.tablero.esCasillaAmenazada(destino_rey_corto, color_oponente):
+                    if not self.tablero.validador_movimiento.esCasillaAmenazada(paso_rey_corto, color_oponente) and \
+                       not self.tablero.validador_movimiento.esCasillaAmenazada(destino_rey_corto, color_oponente):
                         movimientos_enroque.append(destino_rey_corto)
 
         # Verificar Enroque Largo (O-O-O)
@@ -159,8 +154,8 @@ class Rey(Pieza):
                 if all(self.tablero.getPieza(pos) is None for pos in casillas_intermedias_largo):
                     # Verificar que las casillas por las que pasa/a las que llega el rey no están atacadas
                     # (El rey no pasa por (fila, 1)))
-                    if not self.tablero.esCasillaAmenazada(destino_rey_largo, color_oponente) and \
-                       not self.tablero.esCasillaAmenazada(paso_rey_largo, color_oponente):
+                    if not self.tablero.validador_movimiento.esCasillaAmenazada(destino_rey_largo, color_oponente) and \
+                       not self.tablero.validador_movimiento.esCasillaAmenazada(paso_rey_largo, color_oponente):
                         movimientos_enroque.append(destino_rey_largo)
 
         return movimientos_enroque

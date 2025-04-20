@@ -84,7 +84,7 @@ class Pieza:
                 continue # No se puede mover a casilla ocupada por pieza propia
 
             # 2c. Simular el movimiento y verificar si deja al rey en jaque (¡NUEVO!)
-            if self.tablero._simular_y_verificar_seguridad(self, destino):
+            if self.tablero.validador_movimiento.simular_y_verificar_seguridad(self, destino):
                 # Solo añadir el movimiento si el rey está seguro después de él
                 movimientos_legales.append(destino)
 

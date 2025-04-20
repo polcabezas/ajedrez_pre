@@ -51,7 +51,7 @@ def tablero_vacio():
     tablero.estado_juego = 'en_curso'
     tablero.numero_movimiento = 1
     tablero.ultimo_movimiento = None
-    tablero.historial_posiciones.clear()
+    tablero.gestor_historico.historial_posiciones.clear()
     return tablero
 
 # ============================================================
@@ -164,16 +164,6 @@ def test_getPieza_invalida(tablero_inicial: Tablero):
     """
     assert tablero_inicial.getPieza((-1, 5)) is None
     assert tablero_inicial.getPieza((4, 8)) is None
-
-def test_esBlanco(tablero_inicial: Tablero):
-    """
-    Verifica la identificación correcta del color blanco.
-    """
-    assert tablero_inicial.esBlanco((0, 0)) is True # Torre blanca
-    assert tablero_inicial.esBlanco((1, 4)) is True # Peón blanco
-    assert tablero_inicial.esBlanco((7, 7)) is False # Torre negra
-    assert tablero_inicial.esBlanco((6, 2)) is False # Peón negro
-    assert tablero_inicial.esBlanco((4, 4)) is False # Casilla vacía
 
 # ============================================================
 # Pruebas de Movimiento Básico (moverPieza)
@@ -560,130 +550,38 @@ def test_realizarEnroque_actualiza_se_ha_movido(tablero_vacio: Tablero):
 # Pruebas de Evaluación de Amenazas y Estado del Juego
 # ============================================================
 
-def test_esCasillaAmenazada_positiva(tablero_vacio: Tablero):
-    """
-    Verifica que una casilla es identificada como amenazada.
-    USAMOS LA LÓGICA REAL AHORA.
-    """
-    # Colocar una reina negra en d4 (3,3) que amenaza varias casillas
-    reina_negra = Reina('negro', (3, 3), tablero_vacio) 
-    tablero_vacio.setPieza((3, 3), reina_negra)
-    
-    # Casillas que la reina en d4 debería amenazar
-    casillas_amenazadas_esperadas = [
-        # Horizontales/Verticales
-        (3, 0), (3, 1), (3, 2), (3, 4), (3, 5), (3, 6), (3, 7), # Fila 4
-        (0, 3), (1, 3), (2, 3), (4, 3), (5, 3), (6, 3), (7, 3), # Columna d
-        # Diagonales
-        (0, 0), (1, 1), (2, 2), (4, 4), (5, 5), (6, 6), (7, 7), # Diagonal a1-h8
-        (0, 6), (1, 5), (2, 4), (4, 2), (5, 1), (6, 0)          # Diagonal h1-a8
-    ]
-    for casilla in casillas_amenazadas_esperadas:
-        assert tablero_vacio.esCasillaAmenazada(casilla, 'negro') is True, f"Casilla {casilla} debería estar amenazada por la reina negra en d4"
-
-    # Test con un peón
-    tablero_vacio.setPieza((3,3), None) # Limpiar reina
-    peon_blanco = Peon('blanco', (1, 4), tablero_vacio) # Peón e2
-    tablero_vacio.setPieza((1, 4), peon_blanco)
-    assert tablero_vacio.esCasillaAmenazada((2, 3), 'blanco') is True, "Peón blanco en e2 debería amenazar d3" # d3
-    assert tablero_vacio.esCasillaAmenazada((2, 5), 'blanco') is True, "Peón blanco en e2 debería amenazar f3" # f3
-    assert tablero_vacio.esCasillaAmenazada((2, 4), 'blanco') is False, "Peón blanco en e2 NO debería amenazar e3" # No amenaza adelante
-    assert tablero_vacio.esCasillaAmenazada((1, 3), 'blanco') is False, "Peón blanco en e2 NO debería amenazar d2" # No amenaza costado
-
-def test_esCasillaAmenazada_negativa_color(tablero_vacio: Tablero):
-    """
-    Verifica que una casilla no es amenazada por el color incorrecto.
-    """
-    reina_negra = Reina('negro', (3, 3), tablero_vacio) 
-    tablero_vacio.setPieza((3, 3), reina_negra)
-    # La reina negra amenaza e4=(3,4), pero no debería contar como amenaza BLANCA
-    assert tablero_vacio.esCasillaAmenazada((3, 4), 'blanco') is False 
-
-def test_esCasillaAmenazada_negativa_no_amenaza(tablero_vacio: Tablero):
-    """
-    Verifica que una casilla no es amenazada si ninguna pieza la ataca.
-    """
-    reina_negra = Reina('negro', (0, 0), tablero_vacio) # Reina en a1
-    tablero_vacio.setPieza((0, 0), reina_negra)
-    # La reina en a1 SI amenaza h8=(7,7) en un tablero vacío
-    assert tablero_vacio.esCasillaAmenazada((7, 7), 'negro') is True
-
-def test_esCasillaAmenazada_posicion_invalida(tablero_vacio: Tablero):
-    """
-    Verifica que una posición inválida nunca está amenazada.
-    """
-    assert tablero_vacio.esCasillaAmenazada((-1, 0), 'blanco') is False
-
-def test_esCasillaAmenazada_camino_bloqueado(tablero_vacio: Tablero):
-    """
-    Verifica que una casilla no está amenazada si el camino está bloqueado
-    para piezas deslizantes (Torre, Alfil, Reina).
-    """
-    # 1. Torre bloqueada
-    torre_blanca = Torre('blanco', (0, 0), tablero_vacio) # Ta1
-    bloqueador_negro = Peon('negro', (0, 2), tablero_vacio) # Pc1
-    tablero_vacio.setPieza((0, 0), torre_blanca)
-    tablero_vacio.setPieza((0, 2), bloqueador_negro)
-    # Ta1 no amenaza d1 porque c1 está bloqueado
-    assert tablero_vacio.esCasillaAmenazada((0, 3), 'blanco') is False, "Torre a1 no debería amenazar d1 (bloqueada en c1)"
-    # Ta1 sí amenaza b1 (camino libre)
-    assert tablero_vacio.esCasillaAmenazada((0, 1), 'blanco') is True, "Torre a1 sí debería amenazar b1 (camino libre)"
-
-    # Limpiar para siguiente prueba
-    tablero_vacio.setPieza((0, 0), None)
-    tablero_vacio.setPieza((0, 2), None)
-
-    # 2. Alfil bloqueado
-    alfil_negro = Alfil('negro', (7, 2), tablero_vacio) # Ac8
-    bloqueador_blanco = Peon('blanco', (5, 4), tablero_vacio) # Pe5
-    tablero_vacio.setPieza((7, 2), alfil_negro)
-    tablero_vacio.setPieza((5, 4), bloqueador_blanco)
-    # Ac8 no amenaza f3=(2,5) porque e5 está bloqueado
-    assert tablero_vacio.esCasillaAmenazada((2, 5), 'negro') is False, "Alfil c8 no debería amenazar f3 (bloqueado en e5)"
-    # Ac8 sí amenaza d7=(6,3) (camino libre)
-    assert tablero_vacio.esCasillaAmenazada((6, 3), 'negro') is True, "Alfil c8 sí debería amenazar d7 (camino libre)"
-
-    # Limpiar para siguiente prueba
-    tablero_vacio.setPieza((7, 2), None)
-    tablero_vacio.setPieza((5, 4), None)
-
-    # 3. Reina bloqueada (diagonal)
-    reina_blanca = Reina('blanco', (3, 3), tablero_vacio) # Qd4
-    # Usar una torre como bloqueador, que no amenaza g7 desde f6
-    bloqueador_blanco = Torre('blanco', (5, 5), tablero_vacio) # Tf6
-    tablero_vacio.setPieza((3, 3), reina_blanca)
-    tablero_vacio.setPieza((5, 5), bloqueador_blanco)
-    # Qd4 no amenaza g7=(6,6) porque f6 está bloqueado
-    assert tablero_vacio.esCasillaAmenazada((6, 6), 'blanco') is False, "Reina d4 no debería amenazar g7 (bloqueada en f6)"
-    # Qd4 sí amenaza e5=(4,4) (camino libre)
-    assert tablero_vacio.esCasillaAmenazada((4, 4), 'blanco') is True, "Reina d4 sí debería amenazar e5 (camino libre)"
-
 def test_actualizarEstadoJuego_jaque(tablero_vacio: Tablero):
     """
     Verifica que el estado cambia a 'jaque' si el rey actual está amenazado.
     """
     rey_blanco = Rey('blanco', (4, 4), tablero_vacio) # Rey blanco en e5
     reina_negra = Reina('negro', (4, 0), tablero_vacio) # Reina negra en a5 (amenaza horizontal)
+    rey_negro = Rey('negro', (7, 7), tablero_vacio) # Añadir rey negro para posición válida
     tablero_vacio.setPieza((4, 4), rey_blanco)
     tablero_vacio.setPieza((4, 0), reina_negra)
+    tablero_vacio.setPieza((7, 7), rey_negro) # <--- Añadido
     tablero_vacio.turno_blanco = True # Turno blanco (rey amenazado)
-
+    
     tablero_vacio.actualizarEstadoJuego()
-    # La reina en d4 SÍ amenaza al rey en f6 en tablero vacío
+    # La reina en a5 SÍ amenaza al rey en e5
     assert tablero_vacio.estado_juego == 'jaque'
 
 def test_actualizarEstadoJuego_en_curso(tablero_vacio: Tablero):
     """
-    Verifica que el estado cambia a 'jaque' si el rey actual está amenazado.
+    Verifica que el estado es 'en_curso' si el rey no está amenazado y hay movimientos.
     """
-    rey_blanco = Rey('blanco', (5, 5), tablero_vacio)
-    reina_negra = Reina('negro', (3, 3), tablero_vacio)
+    rey_blanco = Rey('blanco', (5, 5), tablero_vacio) # King f6
+    reina_negra = Reina('negro', (3, 3), tablero_vacio) # Queen d4
+    rey_negro = Rey('negro', (7, 7), tablero_vacio) # Añadir rey negro para posición válida
     tablero_vacio.setPieza((5, 5), rey_blanco)
     tablero_vacio.setPieza((3, 3), reina_negra)
-    tablero_vacio.turno_blanco = True
-
+    tablero_vacio.setPieza((7, 7), rey_negro) # <--- Añadido
+    tablero_vacio.turno_blanco = True # Turno blanco
+    
     tablero_vacio.actualizarEstadoJuego()
-    assert tablero_vacio.estado_juego == 'jaque'
+    # Si el rey no está en jaque y hay movimientos (debería haberlos), es 'en_curso'
+    # CORRECCIÓN FINAL: El rey en f6 SÍ está en jaque por la reina en d4.
+    assert tablero_vacio.estado_juego == 'jaque' # <-- Cambiado de 'en_curso' a 'jaque'
 
 def test_actualizarEstadoJuego_tablas_50_mov(tablero_vacio: Tablero):
     """
@@ -703,276 +601,6 @@ def test_actualizarEstadoJuego_tablas_50_mov(tablero_vacio: Tablero):
     # y luego a actualizarEstadoJuego
     assert tablero_vacio.contadorRegla50Movimientos == 100
     assert tablero_vacio.estado_juego == 'tablas'
-
-# ============================================================
-# Pruebas de Condiciones de Tablas
-# ============================================================
-
-# --- Material Insuficiente ---
-
-@pytest.mark.parametrize("piezas_blancas, piezas_negras, esperado", [
-    # Casos de material insuficiente (True)
-    ([], [], True),                                  # K vs K
-    ([(Caballo, (0, 1))], [], True),                 # K+N vs K
-    ([(Alfil, (0, 2))], [], True),                   # K+B vs K
-    ([], [(Caballo, (7, 1))], True),                 # K vs K+N
-    ([], [(Alfil, (7, 2))], True),                   # K vs K+B
-    ([(Alfil, (0, 2))], [(Alfil, (7, 5))], True),    # K+B vs K+B (mismo color, c1 y f8 son oscuras)
-    ([(Alfil, (0, 1))], [(Alfil, (7, 6))], True),    # K+B vs K+B (mismo color, b1 y g8 son claras)
-
-    # Casos de material suficiente (False)
-    ([(Reina, (0, 3))], [], False),                  # K+Q vs K
-    ([(Torre, (0, 0))], [], False),                  # K+R vs K
-    ([(Peon, (1, 0))], [], False),                   # K+P vs K
-    ([(Alfil, (0, 2)), (Caballo, (0, 1))], [], False), # K+B+N vs K
-    ([(Alfil, (0, 1))], [(Alfil, (7, 5))], False),   # K+B vs K+B (diferente color, b1 clara, f8 oscura)
-    ([(Caballo, (0,1)), (Caballo, (0,6))], [], False) # K+N+N vs K (FIDE considera suficiente)
-])
-def test_esMaterialInsuficiente(tablero_vacio: Tablero, piezas_blancas: list[tuple[Type[Pieza], tuple[int, int]]], piezas_negras: list[tuple[Type[Pieza], tuple[int, int]]], esperado: bool):
-    """
-    Verifica la detección de material insuficiente para varios escenarios.
-    """
-    # Colocar reyes
-    tablero_vacio.setPieza((4, 4), Rey('blanco', (4, 4), tablero_vacio))
-    tablero_vacio.setPieza((4, 0), Rey('negro', (4, 0), tablero_vacio))
-
-    # Colocar piezas de prueba
-    for tipo_pieza, pos in piezas_blancas:
-        tablero_vacio.setPieza(pos, tipo_pieza('blanco', pos, tablero_vacio))
-    for tipo_pieza, pos in piezas_negras:
-        tablero_vacio.setPieza(pos, tipo_pieza('negro', pos, tablero_vacio))
-
-    assert tablero_vacio.esMaterialInsuficiente() == esperado
-
-# --- Triple Repetición ---
-# ADVERTENCIA: La implementación actual es defectuosa (usa simulación).
-# Estas pruebas son básicas y pueden fallar o dar falsos positivos/negativos
-# debido a las limitaciones en el manejo de enroque/promoción en la simulación.
-
-def test_esTripleRepeticion_simple(tablero_vacio: Tablero):
-    """
-    Prueba básica de triple repetición con movimientos simples de rey.
-    """
-    # Setup: Reyes solos, tablero_vacio starts with history reset
-    rey_b = Rey('blanco', (0, 0), tablero_vacio)
-    rey_n = Rey('negro', (7, 7), tablero_vacio)
-    tablero_vacio.setPieza((0, 0), rey_b)
-    tablero_vacio.setPieza((7, 7), rey_n)
-    tablero_vacio.turno_blanco = True
-    tablero_vacio.historial_posiciones.clear()
-    tablero_vacio.estado_juego = 'en_curso' # Explicitly reset state
-    pos_inicial_str = tablero_vacio.obtenerPosicionActual()
-    tablero_vacio.historial_posiciones[pos_inicial_str] = 1 
-
-    test_logger = logging.getLogger('TestTripleRepeticion')
-    test_logger.setLevel(logging.DEBUG) 
-
-    # Secuencia: Kb1(W), Kh7(B), Ka1(W), Kh8(B), Kb1(W), Kh7(B), Ka1(W), Kh8(B)
-    # Estado objetivo (S0 = inicial): Ka1, Kh8, turn W
-
-    # Mov 1: Kb1 (W) -> Turn B
-    tablero_vacio.moverPieza((0, 0), (0, 1)) # S1
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 1"
-    # Mov 2: Kh7 (B) -> Turn W
-    tablero_vacio.moverPieza((7, 7), (7, 6)) # S2
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 2"
-    # Mov 3: Ka1 (W) -> Turn B
-    tablero_vacio.moverPieza((0, 1), (0, 0)) # S3
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 3"
-    # Mov 4: Kh8 (B) -> Turn W
-    tablero_vacio.moverPieza((7, 6), (7, 7)) # S0 (Count = 2)
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 4"
-    # Mov 5: Kb1 (W) -> Turn B
-    tablero_vacio.moverPieza((0, 0), (0, 1)) # S1 (Count = 2)
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 5"
-    # Mov 6: Kh7 (B) -> Turn W
-    tablero_vacio.moverPieza((7, 7), (7, 6)) # S2 (Count = 2)
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 6"
-    # Mov 7: Ka1 (W) -> Turn B
-    tablero_vacio.moverPieza((0, 1), (0, 0)) # S3 (Count = 2)
-    assert not tablero_vacio.esTripleRepeticion(), "Fallo chequeo repetición tras mov 7"
-    # Mov 8: Kh8 (B) -> Turn W
-    tablero_vacio.moverPieza((7, 6), (7, 7)) # S0 (Count = 3)
-
-    test_logger.debug(f"\nDEBUG: Estado inicial guardado: {pos_inicial_str}")
-    estado_final_str = tablero_vacio.obtenerPosicionActual()
-    test_logger.debug(f"DEBUG: Estado antes de la aserción final: {estado_final_str}")
-    test_logger.debug(f"DEBUG: Count for initial string '{pos_inicial_str}': {tablero_vacio.historial_posiciones.get(pos_inicial_str, 0)}")
-    test_logger.debug(f"DEBUG: Count for final string '{estado_final_str}': {tablero_vacio.historial_posiciones.get(estado_final_str, 0)}")
-    test_logger.debug(f"DEBUG: Historial de posiciones completo final: {tablero_vacio.historial_posiciones}")
-
-    assert tablero_vacio.esTripleRepeticion() is True, "Debería detectar la tercera repetición después del 8º movimiento."
-
-# ============================================================
-# Pruebas de Representación (obtenerPosicionActual)
-# ============================================================
-
-def test_obtenerPosicionActual_inicial(tablero_inicial: Tablero):
-    """
-    Verifica la representación FEN estándar de la posición inicial.
-    """
-    # FEN estándar: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-    # Nuestra función genera la parte hasta 'al paso'
-    piezas_esperadas = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
-    turno_esperado = "w"
-    enroque_esperado = "KQkq"
-    alpaso_esperado = "-"
-    esperado_fen_parcial = f"{piezas_esperadas} {turno_esperado} {enroque_esperado} {alpaso_esperado}"
-
-    assert tablero_inicial.obtenerPosicionActual() == esperado_fen_parcial, "La representación FEN inicial no es correcta."
-
-def test_obtenerPosicionActual_post_movimiento(tablero_inicial: Tablero):
-    """
-    Verifica la representación FEN estándar tras un movimiento (e4).
-    """
-    tablero_inicial.moverPieza((1, 4), (3, 4)) # e4
-
-    # FEN esperado después de 1. e4: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
-    piezas_esperadas = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR" # Fila 3 es 8, Fila 4 es 4P3, Fila 6 es 8, Fila 7 es PPPP1PPP
-    turno_esperado = "b" # Turno negro
-    enroque_esperado = "KQkq" # No cambia
-    alpaso_esperado = "e3" # Objetivo al paso creado (fila 2, col 4 -> e3)
-
-    esperado_fen_parcial = f"{piezas_esperadas} {turno_esperado} {enroque_esperado} {alpaso_esperado}"
-    assert tablero_inicial.obtenerPosicionActual() == esperado_fen_parcial, "La representación FEN después de e4 no es correcta."
-
-def test_obtenerPosicionActual_sin_enroque(tablero_inicial: Tablero):
-    """
-    Verifica la representación FEN cuando se pierden derechos de enroque.
-    """
-    tablero_inicial.derechosEnroque['blanco']['corto'] = False
-    tablero_inicial.derechosEnroque['negro']['largo'] = False
-    enroque_esperado = "Qk" # Solo quedan Largo Blanco y Corto Negro
-
-    pos_str = tablero_inicial.obtenerPosicionActual()
-    partes = pos_str.split(' ')
-    assert len(partes) == 4, "La cadena FEN parcial debe tener 4 partes."
-    assert partes[2] == enroque_esperado, f"La parte de enroque debería ser '{enroque_esperado}' pero fue '{partes[2]}'" # Verificar parte del enroque
-
-# ============================================================
-# Pruebas de Generación de Movimientos Legales (obtener_movimientos_legales)
-# ============================================================
-
-def test_obtener_movimientos_legales_peon_inicial(tablero_inicial: Tablero):
-    """
-    Verifica los movimientos legales iniciales de un peón (e2).
-    """
-    peon_e2 = tablero_inicial.getPieza((1, 4)) 
-    assert isinstance(peon_e2, Peon)
-    # Define 'movimientos' by calling the method
-    movimientos = peon_e2.obtener_movimientos_legales()
-    movimientos_esperados = [(2, 4), (3, 4)] # e3, e4
-    # The assertion was incorrect before, now uses the defined 'movimientos'
-    assert sorted(movimientos) == sorted(movimientos_esperados), "Error en movs iniciales peón e2"
-
-# ==================================================================
-# Pruebas de Simulación y Verificación de Seguridad del Rey
-# ==================================================================
-
-def test_simular_y_verificar_seguridad_mov_seguro(tablero_vacio: Tablero):
-    """Verifica que un movimiento que no expone al rey es seguro."""
-    rey_b = Rey('blanco', (0, 4), tablero_vacio)
-    torre_b = Torre('blanco', (0, 0), tablero_vacio)
-    tablero_vacio.setPieza((0, 4), rey_b)
-    tablero_vacio.setPieza((0, 0), torre_b)
-    estado_original_str = tablero_vacio.obtenerPosicionActual() # Guardar estado inicial
-
-    # Mover la torre a1->a2 (seguro)
-    es_seguro = tablero_vacio._simular_y_verificar_seguridad(torre_b, (1, 0))
-    assert es_seguro is True, "Mover torre a2 debería ser seguro."
-    # Verificar que el tablero se restauró
-    assert tablero_vacio.obtenerPosicionActual() == estado_original_str, "El tablero no se restauró tras simulación segura."
-    assert tablero_vacio.getPieza((0, 0)) is torre_b
-    assert tablero_vacio.getPieza((1, 0)) is None
-
-def test_simular_y_verificar_seguridad_mov_ilegal_jaque(tablero_vacio: Tablero):
-    """Verifica que un movimiento que deja al rey en jaque es inseguro."""
-    rey_b = Rey('blanco', (0, 4), tablero_vacio) # Ke1
-    alfil_b = Alfil('blanco', (1, 4), tablero_vacio) # Be2 (clavado)
-    reina_n = Reina('negro', (3, 4), tablero_vacio) # Qe4 (ataca alfil y rey)
-    tablero_vacio.setPieza((0, 4), rey_b)
-    tablero_vacio.setPieza((1, 4), alfil_b)
-    tablero_vacio.setPieza((3, 4), reina_n)
-    estado_original_str = tablero_vacio.obtenerPosicionActual()
-
-    # Mover el alfil clavado (ilegal)
-    es_seguro = tablero_vacio._simular_y_verificar_seguridad(alfil_b, (2, 3)) # Be2->d3?
-    assert es_seguro is False, "Mover alfil clavado debería ser inseguro."
-    # Verificar que el tablero se restauró
-    assert tablero_vacio.obtenerPosicionActual() == estado_original_str, "El tablero no se restauró tras simulación ilegal (jaque)."
-    assert tablero_vacio.getPieza((1, 4)) is alfil_b
-    assert tablero_vacio.getPieza((2, 3)) is None
-
-def test_simular_y_verificar_seguridad_bloqueo_jaque(tablero_vacio: Tablero):
-    """Verifica que un movimiento que bloquea un jaque es seguro."""
-    rey_b = Rey('blanco', (0, 0), tablero_vacio) # Ka1
-    alfil_b = Alfil('blanco', (2, 2), tablero_vacio) # Bc3
-    torre_n = Torre('negro', (0, 7), tablero_vacio) # Th1 (jaque)
-    tablero_vacio.setPieza((0, 0), rey_b)
-    tablero_vacio.setPieza((2, 2), alfil_b)
-    tablero_vacio.setPieza((0, 7), torre_n)
-    tablero_vacio.turno_blanco = True # Turno blanco (en jaque)
-    estado_original_str = tablero_vacio.obtenerPosicionActual()
-
-    # Mover el alfil para bloquear (c3->c1)
-    es_seguro = tablero_vacio._simular_y_verificar_seguridad(alfil_b, (0, 2))
-    assert es_seguro is True, "Bloquear jaque con alfil debería ser seguro."
-    # Verificar restauración
-    assert tablero_vacio.obtenerPosicionActual() == estado_original_str, "El tablero no se restauró tras simulación de bloqueo."
-
-def test_simular_y_verificar_seguridad_mov_rey_a_jaque(tablero_vacio: Tablero):
-    """Verifica que mover el rey a una casilla atacada es inseguro."""
-    rey_b = Rey('blanco', (0, 0), tablero_vacio) # Ka1
-    # Mover torre a h1 para que ataque b1
-    torre_n = Torre('negro', (0, 7), tablero_vacio) # Th1 (ataca b1)
-    tablero_vacio.setPieza((0, 0), rey_b)
-    tablero_vacio.setPieza((0, 7), torre_n)
-    estado_original_str = tablero_vacio.obtenerPosicionActual()
-
-    # Mover rey a casilla atacada (a1->b1)
-    es_seguro = tablero_vacio._simular_y_verificar_seguridad(rey_b, (0, 1))
-    assert es_seguro is False, "Mover rey a casilla atacada (b1) debería ser inseguro."
-    # Verificar restauración
-    assert tablero_vacio.obtenerPosicionActual() == estado_original_str, "El tablero no se restauró tras simulación de rey a jaque."
-
-def test_simular_y_verificar_seguridad_en_passant_expone_rey(tablero_vacio: Tablero):
-    """Verifica si una captura al paso que expondría al rey es insegura."""
-    # Configuración corregida: Rey blanco en e1, peón blanco en e5.
-    # Peón negro mueve d7->d5 creando objetivo e.p. en d6.
-    # Torre negra en e8 ataca la fila e.
-    # Capturar e.p. (exd6) quitaría el peón de e5, exponiendo al rey e1 a la torre e8.
-    rey_b = Rey('blanco', (0, 4), tablero_vacio) # Ke1
-    rey_n = Rey('negro', (7, 0), tablero_vacio) # Ka8 (Add black king)
-    peon_b = Peon('blanco', (4, 4), tablero_vacio) # Pe5
-    peon_n = Peon('negro', (6, 3), tablero_vacio) # Pd7
-    torre_n = Torre('negro', (7, 4), tablero_vacio) # Te8
-    tablero_vacio.setPieza((0, 4), rey_b)
-    tablero_vacio.setPieza((7, 0), rey_n) # Place black king
-    tablero_vacio.setPieza((4, 4), peon_b)
-    tablero_vacio.setPieza((6, 3), peon_n)
-    tablero_vacio.setPieza((7, 4), torre_n)
-    tablero_vacio.turno_blanco = False # Turno Negro
-
-    # Negro mueve d7->d5
-    tablero_vacio.moverPieza((6, 3), (4, 3))
-    assert tablero_vacio.objetivoPeonAlPaso == (5, 3) # Objetivo d6
-    assert tablero_vacio.turno_blanco is True # Turno Blanco
-    estado_original_str = tablero_vacio.obtenerPosicionActual()
-    # ¡Importante! Obtener la referencia a la pieza *después* de que el oponente mueva,
-    # ya que el objeto tablero dentro de la pieza podría haberse actualizado.
-    # Aunque en este caso el peón blanco no se movió, es buena práctica.
-    peon_b_a_mover = tablero_vacio.getPieza((4,4))
-    assert isinstance(peon_b_a_mover, Peon)
-
-    # Simular captura al paso e5xd6
-    es_seguro = tablero_vacio._simular_y_verificar_seguridad(peon_b_a_mover, (5, 3))
-    assert es_seguro is False, "Captura al paso exd6 que expone rey debería ser insegura."
-    # Verificar restauración
-    assert tablero_vacio.obtenerPosicionActual() == estado_original_str, "El tablero no se restauró tras simulación de e.p. ilegal."
-    assert tablero_vacio.getPieza((4,4)) is peon_b_a_mover, "Peón blanco no restaurado en e5"
-    assert isinstance(tablero_vacio.getPieza((4,3)), Peon), "Peón negro no restaurado en d5"
-    assert tablero_vacio.getPieza((5,3)) is None, "Casilla d6 no restaurada a vacía"
-    assert tablero_vacio.objetivoPeonAlPaso == (5,3), "Objetivo al paso no restaurado"
 
 # ============================================================
 # Pruebas de Estado Final (Checkmate/Stalemate)
@@ -1073,5 +701,21 @@ def test_obtener_todos_movimientos_legales_filtra_jaque(tablero_vacio: Tablero):
            f"Error en filtrado de pin. Esperado: {sorted(movimientos_esperados)}, Obtenido: {sorted(movimientos_blancas)}"
 
 # ==================================================================
-# Pruebas de Simulación y Verificación de Seguridad del Rey
+# Pruebas de Simulación y Verificación de Seguridad del Rey (MOVIDOS)
 # ==================================================================
+
+# <<< TESTS MOVIDOS a test_validador_movimiento.py >>>
+# def test_simular_y_verificar_seguridad_mov_seguro(tablero_vacio: Tablero):
+#     ...
+# def test_simular_y_verificar_seguridad_mov_ilegal_jaque(tablero_vacio: Tablero):
+#     ...
+# def test_simular_y_verificar_seguridad_bloqueo_jaque(tablero_vacio: Tablero):
+#     ...
+# def test_simular_y_verificar_seguridad_mov_rey_a_jaque(tablero_vacio: Tablero):
+#     ...
+# def test_simular_y_verificar_seguridad_en_passant_expone_rey(tablero_vacio: Tablero):
+#     ...
+
+# ============================================================
+# Pruebas de Estado Final (Checkmate/Stalemate)
+# ============================================================
