@@ -7,8 +7,9 @@ from abc import ABC, abstractmethod
 from typing import Literal, Tuple, TYPE_CHECKING
 
 # Evitar importación circular para type hints
-if TYPE_CHECKING:
-    from model.juego import Juego # Asumiendo que Juego está en model/juego.py
+# Comentar o eliminar este bloque
+# if TYPE_CHECKING:
+#     from model.juego import Juego # Asumiendo que Juego está en model/juego.py
 
 # Definir un tipo para la información del movimiento (provisional)
 # Representa (fila_origen, col_origen), (fila_destino, col_destino)

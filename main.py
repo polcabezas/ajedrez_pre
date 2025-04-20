@@ -3,87 +3,64 @@ Script principal para iniciar el juego, inicializa los componentes MVC.
 Permite visualizar la interfaz gráfica.
 """
 import pygame
-from view.interfaz_ajedrez import InterfazAjedrez
-from model.tablero import Tablero
+# Eliminar importaciones innecesarias si el controlador real las maneja
+# from view.interfaz_ajedrez import InterfazAjedrez 
+# from model.tablero import Tablero
 from typing import List, Tuple, Optional, Literal
+import sys
+import os
 
-# --- Controlador Mock (Temporal) ---
-class ControladorMock:
-    """
-    Controlador simulado para permitir la visualización de la interfaz.
-    Proporciona los métodos mínimos requeridos por InterfazAjedrez.
-    """
-    def __init__(self):
-        """Inicializa el controlador mock con un tablero."""
-        self.tablero = Tablero()
+# Añadir el directorio raíz al sys.path para asegurar que los módulos se encuentren
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir) # Añade el directorio donde está main.py
 
-    def obtener_tablero(self):
-        """Devuelve la instancia del tablero."""
-        return self.tablero
+# Importar el controlador real
+from controller.controlador_juego import ControladorJuego
 
-    def obtener_movimientos_validos(self, casilla: Tuple[int, int]) -> List[Tuple[int, int]]:
-        """
-        Devuelve una lista vacía de movimientos válidos (simulación).
-        En una implementación real, calcularía los movimientos legales.
-        """
-        print(f"(Mock) Calculando movimientos válidos para: {casilla}")
-        # Simulación simple: permitir mover a casillas adyacentes (no realista)
-        movimientos = []
-        fila, col = casilla
-        for df in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                if df == 0 and dc == 0:
-                    continue
-                nueva_fila, nueva_col = fila + df, col + dc
-                if 0 <= nueva_fila <= 7 and 0 <= nueva_col <= 7:
-                    movimientos.append((nueva_fila, nueva_col))
-        return movimientos
+# --- Eliminar ControladorMock --- 
+# class ControladorMock:
+#     ...
+# (Todo el código del mock eliminado)
 
-    def mover_pieza(self, origen: Tuple[int, int], destino: Tuple[int, int]):
-        """
-        Simula el movimiento de una pieza (solo imprime la acción).
-        En una implementación real, validaría y ejecutaría el movimiento en el tablero.
-        """
-        print(f"(Mock) Moviendo pieza de {origen} a {destino}")
-        # Lógica de movimiento muy básica para la simulación visual
-        pieza = self.tablero.getPieza(origen)
-        if pieza:
-            # Verificar si el destino es válido (no es necesario para este mock)
-            # Simplemente mover la pieza en el tablero mock
-            self.tablero.setPieza(destino, pieza)
-            self.tablero.setPieza(origen, None)
-            pieza.posicion = destino # Actualizar posición interna de la pieza
-            print(f"(Mock) Pieza {pieza.getTipo()} movida.")
-        else:
-            print("(Mock) No hay pieza en el origen.")
-
-
-# --- Función Principal ---
+# --- Función Principal (Modificada) ---
 def main():
     """
-    Inicializa pygame, crea los componentes (mock) y ejecuta el bucle principal.
+    Inicializa pygame, crea el controlador real y ejecuta el bucle principal.
     """
-    # Crear componentes
-    controlador = ControladorMock()
-    tablero = controlador.obtener_tablero() # El mock controller ya tiene un tablero
-    interfaz = InterfazAjedrez(controlador)
-    
-    # Bucle principal del juego
-    corriendo = True
-    while corriendo:
-        # Manejar eventos
-        corriendo = interfaz.manejar_eventos()
+    try:
+        # Crear el controlador real. Este a su vez creará el modelo y la vista.
+        controlador = ControladorJuego()
         
-        # Actualizar la pantalla
-        # Pasamos el tablero para que se dibuje correctamente en la vista del tablero
-        interfaz.actualizar(tablero)
+        # Iniciar el bucle principal a través del controlador
+        controlador.iniciar()
         
-        # Pequeña pausa para no consumir 100% CPU
-        pygame.time.Clock().tick(30)
+    except ImportError as e:
+        print(f"Error de importación en main.py: {e}")
+        print("Asegúrate de que las carpetas 'model', 'view' y 'controller' están accesibles desde el directorio raíz.")
+        # Intentar inicializar pygame para mostrar error gráfico si es posible
+        try:
+            pygame.init()
+            screen = pygame.display.set_mode((600, 100))
+            pygame.display.set_caption("Error de Importación")
+            font = pygame.font.SysFont(None, 24)
+            text_surface = font.render(f"Error al cargar módulos: {e}. Revisa la consola.", True, (255, 0, 0))
+            screen.fill((200, 200, 200))
+            screen.blit(text_surface, (10, 40))
+            pygame.display.flip()
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        return
+                pygame.time.wait(50)
+        except Exception as pygame_err:
+             print(f"No se pudo inicializar pygame para mostrar el error: {pygame_err}")
+             
+    except Exception as e:
+        print(f"Ocurrió un error inesperado en main.py: {e}")
+        # Asegurarse de cerrar pygame si se inicializó parcialmente
+        pygame.quit()
 
-    # Salir de pygame
-    pygame.quit()
-
-# --- Punto de Entrada ---
+# --- Punto de Entrada (Sin cambios) ---
 if __name__ == "__main__":
     main() 

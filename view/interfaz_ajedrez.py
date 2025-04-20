@@ -67,7 +67,9 @@ class InterfazAjedrez:
         
         # Variables de estado
         self.vista_actual = 'configuracion'  # 'configuracion' o 'tablero'
+        self.turno_actual = 'blanco' # Añadir estado para saber el turno a mostrar
         self.pieza_seleccionada = None
+        self.mensaje_estado = None # Para mostrar mensajes como Jaque, Mate, etc.
         self.casilla_origen = None
         self.movimientos_validos = []
         
@@ -299,7 +301,8 @@ class InterfazAjedrez:
              self._dibujar_dropdown('modalidad', self.elementos_ui['config']['modalidad_pos'])
              
         # Dibujar botón Jugar (se dibuja antes del dropdown abierto)
-        self._dibujar_boton("Jugar", self.elementos_ui['config']['boton_jugar_pos'], accion=self._iniciar_juego)
+        self._dibujar_boton("Jugar", self.elementos_ui['config']['boton_jugar_pos'], 
+                          accion=self.controlador.solicitar_inicio_juego)
 
         # --- 4. Dibujar el dropdown abierto (si existe) al final --- 
         if dropdown_abierto:
@@ -410,6 +413,12 @@ class InterfazAjedrez:
         self._dibujar_panel_lateral(self.DIMENSIONES['ventana'][0] - self.DIMENSIONES['panel_lateral'], 
                                    self.jugadores['negro'])  # Panel derecho
         
+        # Dibujar Indicador de Turno (debajo del reloj)
+        self._dibujar_indicador_turno()
+        
+        # Dibujar Mensaje de Estado (si existe)
+        self._dibujar_mensaje_estado()
+        
         # Dibujar reloj
         self._dibujar_reloj()
         
@@ -432,20 +441,109 @@ class InterfazAjedrez:
         texto_nombre = self.fuente_normal.render(jugador['nombre'], True, self.COLORES['gris_oscuro'])
         self.ventana.blit(texto_nombre, (x + 10, 50))
         
-        # Espacio para piezas capturadas (implementar más adelante)
+        # --- Dibujar Piezas Capturadas ---
+        y_capturas = 90 # Posición Y inicial para las capturas
+        x_capturas_start = x + 10
+        max_ancho_panel = self.DIMENSIONES['panel_lateral'] - 20 # Margen
+        tamaño_captura = 20 # Tamaño pequeño para los iconos
+        espacio_captura = 5 # Espacio entre iconos
+        x_actual = x_capturas_start
+        
+        if 'piezas_capturadas' in jugador:
+            # Ordenar por valor (opcional, pero común) - Requiere método getValor() en Pieza
+            # piezas_ordenadas = sorted(jugador['piezas_capturadas'], key=lambda p: p.getValor(), reverse=True)
+            piezas_ordenadas = jugador['piezas_capturadas'] # Sin ordenar por ahora
+            
+            for pieza in piezas_ordenadas:
+                tipo = type(pieza).__name__.lower()
+                color_pieza = pieza.get_color()
+                imagen_orig = self.imagenes_piezas.get(color_pieza, {}).get(tipo)
+                
+                if imagen_orig:
+                    imagen_captura = pygame.transform.smoothscale(imagen_orig, (tamaño_captura, tamaño_captura))
+                    # Comprobar si cabe en la línea actual
+                    if x_actual + tamaño_captura > x + max_ancho_panel:
+                         # Pasar a la siguiente línea
+                         x_actual = x_capturas_start
+                         y_capturas += tamaño_captura + espacio_captura
+                         
+                    self.ventana.blit(imagen_captura, (x_actual, y_capturas))
+                    x_actual += tamaño_captura + espacio_captura
+                else:
+                    logger.warning(f"No se encontró imagen para pieza capturada: {tipo} {color_pieza}")
+                    # Dibujar un placeholder? 
+                    # pygame.draw.rect(self.ventana, (100,100,100), (x_actual, y_capturas, tamaño_captura, tamaño_captura), 1)
+                    # x_actual += tamaño_captura + espacio_captura
     
+    def _dibujar_indicador_turno(self):
+        """ Dibuja un texto indicando de quién es el turno. """
+        texto = f"Turno de: {self.turno_actual.capitalize()}"
+        color_texto = self.COLORES['gris_oscuro']
+        fuente_turno = self.fuente_normal
+        
+        texto_surf = fuente_turno.render(texto, True, color_texto)
+        
+        # Posicionar debajo del reloj
+        reloj_centro_x, reloj_centro_y = self.elementos_ui['tablero']['reloj_pos']
+        # Asumimos altura del reloj (aproximada por fuente + padding)
+        altura_reloj_aprox = fuente_turno.get_height() + 20 
+        pos_y = reloj_centro_y + altura_reloj_aprox // 2 + 15 # Espacio debajo del reloj
+        pos_x = reloj_centro_x
+        
+        texto_rect = texto_surf.get_rect(center=(pos_x, pos_y))
+        self.ventana.blit(texto_surf, texto_rect)
+
+    def _dibujar_mensaje_estado(self):
+        """ Dibuja el mensaje de estado actual si existe. """
+        if self.mensaje_estado:
+            color_texto = self.COLORES['negro'] 
+            # Podríamos usar un color diferente para jaque vs mate/tablas
+            # if "Mate" in self.mensaje_estado or "Tablas" in self.mensaje_estado:
+            #     color_texto = (200, 0, 0) # Rojo oscuro
+            # elif "Jaque" in self.mensaje_estado:
+            #     color_texto = (200, 100, 0) # Naranja oscuro
+                
+            fuente_mensaje = self.fuente_subtitulo # Usar fuente más grande
+            
+            texto_surf = fuente_mensaje.render(self.mensaje_estado, True, color_texto)
+            
+            # Posicionar en la parte superior central, encima del reloj/turno
+            centro_x = self.DIMENSIONES['ventana'][0] // 2
+            pos_y = 25 # Más arriba
+            
+            texto_rect = texto_surf.get_rect(center=(centro_x, pos_y))
+            
+            # Fondo semi-transparente opcional para legibilidad
+            fondo_rect = texto_rect.inflate(20, 10) # Añadir padding
+            fondo_surf = pygame.Surface(fondo_rect.size, pygame.SRCALPHA)
+            fondo_surf.fill((220, 220, 220, 180)) # Gris claro semi-transparente
+            self.ventana.blit(fondo_surf, fondo_rect)
+            
+            # Dibujar texto encima del fondo
+            self.ventana.blit(texto_surf, texto_rect)
+
     def _dibujar_reloj(self):
         """
         Dibuja el reloj/temporizador en la parte superior con fondo gris claro.
+        Ahora usa los tiempos del diccionario self.jugadores.
         """
-        tiempo = "00:00"  # Obtener del controlador/modelo en el futuro
+        # Obtener tiempo del jugador cuyo turno es
+        tiempo_blanco = self.jugadores['blanco'].get('tiempo', '--:--')
+        tiempo_negro = self.jugadores['negro'].get('tiempo', '--:--')
+        
+        # Mostrar ambos tiempos puede ser más útil
+        texto_tiempo = f"B: {tiempo_blanco} | N: {tiempo_negro}"
+        # O solo el del jugador activo:
+        # tiempo_activo = tiempo_blanco if self.turno_actual == 'blanco' else tiempo_negro
+        # texto_tiempo = tiempo_activo
+        
         color_texto = self.COLORES['gris_oscuro']
         color_fondo = self.COLORES['gris_claro']
         fuente_reloj = self.fuente_normal # Usar fuente más pequeña
         padding = 10 # Espacio entre el texto y el borde del fondo
 
         # Renderizar el texto para obtener su tamaño
-        texto_surf = fuente_reloj.render(tiempo, True, color_texto)
+        texto_surf = fuente_reloj.render(texto_tiempo, True, color_texto)
         texto_rect = texto_surf.get_rect()
 
         # Calcular tamaño y posición del rectángulo de fondo
@@ -696,32 +794,7 @@ class InterfazAjedrez:
             fila = 7 - (pos[1] - y0) // tamaño_casilla  # Convertir coordenada y a fila del tablero
             
             # Notificar al controlador o seleccionar la pieza
-            self._seleccionar_casilla((fila, columna))
-    
-    def _seleccionar_casilla(self, casilla):
-        """
-        Selecciona una casilla y la pieza en ella si existe.
-        
-        Args:
-            casilla: Tupla (fila, columna) de la casilla seleccionada.
-        """
-        tablero = self.controlador.obtener_tablero()
-        pieza = tablero.getPieza(casilla)
-        
-        # Si ya hay una pieza seleccionada, intentar mover
-        if self.casilla_origen is not None:
-            if casilla in self.movimientos_validos:
-                # Realizar movimiento
-                self.controlador.mover_pieza(self.casilla_origen, casilla)
-            
-            # Limpiar selección
-            self.casilla_origen = None
-            self.movimientos_validos = []
-            
-        # Si se seleccionó una pieza, mostrar movimientos válidos
-        elif pieza and pieza.color == tablero.getTurnoColor():
-            self.casilla_origen = casilla
-            self.movimientos_validos = self.controlador.obtener_movimientos_validos(casilla)
+            self.controlador.manejar_clic_casilla((fila, columna))
     
     def actualizar(self, tablero=None):
         """
@@ -736,6 +809,37 @@ class InterfazAjedrez:
             self.dibujar_pantalla_tablero(tablero)
         
         pygame.display.flip()
+    
+    def cambiar_vista(self, vista):
+        """
+        Cambia la vista actual.
+        
+        Args:
+            vista: String que indica la vista ('configuracion' o 'tablero').
+        """
+        if vista in ['configuracion', 'tablero']:
+            self.vista_actual = vista
+    
+    def obtener_configuracion(self):
+        """
+        Obtiene la configuración seleccionada por el usuario.
+        
+        Returns:
+            Dict: Diccionario con la configuración seleccionada.
+        """
+        return {
+            'tipo_juego': self.dropdown_tipo_juego['seleccionado'],
+            'modalidad': self.dropdown_modalidad['seleccionado']
+        } 
+
+    def mostrar_mensaje_estado(self, texto: Optional[str]):
+        """
+        Actualiza el mensaje de estado que se mostrará en la pantalla.
+        Si texto es None, limpia el mensaje.
+        """
+        self.mensaje_estado = texto
+        # Podríamos añadir lógica para que mensajes no persistentes desaparezcan
+        # después de un tiempo, pero por ahora se mantienen hasta el siguiente cambio.
     
     def cambiar_vista(self, vista):
         """
