@@ -23,7 +23,7 @@ project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
 from model.juego import Juego
-from model.piezas import Pieza
+from model.piezas.pieza import Pieza
 from model.tablero import Tablero
 from view.interfaz_ajedrez import InterfazAjedrez
 

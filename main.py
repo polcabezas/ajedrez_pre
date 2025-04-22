@@ -12,7 +12,8 @@ import os
 
 # Añadir el directorio raíz al sys.path para asegurar que los módulos se encuentren
 current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir) # Añade el directorio donde está main.py
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
 
 # Importar el controlador real
 from controller.controlador_juego import ControladorJuego

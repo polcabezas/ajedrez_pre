@@ -6,7 +6,7 @@ pygame
 python-dotenv
 
 # Chess logic engine
-python-chess>=1.9.4 # Added for engine integration
+python-chess
 
 # Testing
 pytest
