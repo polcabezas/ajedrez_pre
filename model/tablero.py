@@ -6,13 +6,8 @@ from typing import Dict, List, Tuple, Optional, Literal
 from collections import defaultdict # Importar defaultdict
 
 # Importar piezas
+from model.piezas import Torre, Caballo, Alfil, Reina, Rey, Peon
 from model.piezas.pieza import Pieza
-from model.piezas.torre import Torre
-from model.piezas.caballo import Caballo
-from model.piezas.alfil import Alfil
-from model.piezas.reina import Reina
-from model.piezas.rey import Rey
-from model.piezas.peon import Peon
 # Importar evaluador de estado
 from .evaluador_estado_de_juego import EvaluadorEstadoDeJuego
 # Importar validador de movimiento
