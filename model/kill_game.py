@@ -47,25 +47,44 @@ class KillGame:
         """
         logger.warning(f"[DESARROLLO] Forzando fin de juego: {resultado} por {motivo}")
         
+        # Asegurarnos de que siempre usamos la referencia más reciente al tablero
+        self.tablero = self.juego.tablero
+        
         # Modificar el estado del juego
         if resultado == 'victoria_blanco':
             self.juego.estado = 'jaque_mate'
             # Asegurarse de que el turno actual sea negro (para que el ganador sea blanco)
             self.juego.color_activo = 'negro'
             self.tablero.turno_blanco = False
+            # Actualizar también el estado del tablero
+            self.tablero.estado_juego = 'jaque_mate'
         elif resultado == 'victoria_negro':
             self.juego.estado = 'jaque_mate'
             # Asegurarse de que el turno actual sea blanco (para que el ganador sea negro)
             self.juego.color_activo = 'blanco'
             self.tablero.turno_blanco = True
+            # Actualizar también el estado del tablero
+            self.tablero.estado_juego = 'jaque_mate'
         elif resultado == 'tablas':
             # Establecer el estado específico de tablas según el motivo
             if motivo == 'ahogado':
                 self.juego.estado = 'ahogado'
+                self.tablero.estado_juego = 'tablas'  # En el tablero, ahogado se considera tablas
+                self.tablero.motivo_tablas = 'ahogado'
             elif motivo in ['material_insuficiente', 'repeticion', 'regla_50_movimientos']:
                 self.juego.estado = 'tablas'
+                self.tablero.estado_juego = 'tablas'
+                # Actualizar también el motivo en el tablero
+                if hasattr(self.tablero, 'motivo_tablas'):
+                    self.tablero.motivo_tablas = motivo
             else:
                 self.juego.estado = 'tablas'  # Motivo genérico
+                self.tablero.estado_juego = 'tablas'
+                self.tablero.motivo_tablas = motivo if motivo else 'material_insuficiente'
+        
+        # Asegurarse de que el tablero tiene piezasCapturadas inicializado
+        if not hasattr(self.tablero, 'piezasCapturadas') or self.tablero.piezasCapturadas is None:
+            self.tablero.piezasCapturadas = []
         
         # Detener el temporizador si existe
         if self.juego.temporizador:

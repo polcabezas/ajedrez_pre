@@ -306,7 +306,9 @@ class ControladorJuego:
             elif estado_juego == 'tablas':
                 self.vista.mostrar_mensaje_estado("Tablas.")
                 self.juego_terminado = True
-                self.mostrar_popup_fin_juego('tablas', 'material_insuficiente')
+                # Obtener el motivo específico de tablas desde el modelo
+                motivo_tablas = self.modelo.getMotivoTablas() or 'material_insuficiente'
+                self.mostrar_popup_fin_juego('tablas', motivo_tablas)
             elif estado_juego == 'ahogado':
                 self.vista.mostrar_mensaje_estado("Ahogado. Tablas.")
                 self.juego_terminado = True
@@ -474,16 +476,22 @@ class ControladorJuego:
         """
         logger.warning("⚠️ USANDO MÉTODO DE DESARROLLO PARA FORZAR FIN DE JUEGO")
         
-        # Crear instancia de KillGame y forzar el fin
-        killer = KillGame(self.modelo)
-        killer.forzar_fin_juego(resultado, motivo)
+        try:
+            # Crear instancia de KillGame y forzar el fin
+            killer = KillGame(self.modelo)
+            killer.forzar_fin_juego(resultado, motivo)
+            
+            # Asegurarnos de que el modelo y la vista estén sincronizados
+            self.modelo.estado = self.modelo.getEstadoJuego()
+            
+            # Actualizar la vista para mostrar el fin de juego
+            self._actualizar_estado_post_movimiento()
+            
+            # Marcar el juego como terminado
+            self.juego_terminado = True
+        except Exception as e:
+            logger.error(f"Error al forzar fin de juego: {e}", exc_info=True)
         
-        # Actualizar la vista para mostrar el fin de juego
-        self._actualizar_estado_post_movimiento()
-        
-        # Marcar el juego como terminado
-        self.juego_terminado = True
-    
     def dev_test_victoria_blancas(self):
         """MÉTODO DE DESARROLLO - Simula victoria de las blancas por jaque mate"""
         self.dev_forzar_fin_juego('victoria_blanco', 'jaque_mate')
@@ -499,6 +507,14 @@ class ControladorJuego:
     def dev_test_tablas_insuficiente(self):
         """MÉTODO DE DESARROLLO - Simula tablas por material insuficiente"""
         self.dev_forzar_fin_juego('tablas', 'material_insuficiente')
+        
+    def dev_test_tablas_repeticion(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por triple repetición"""
+        self.dev_forzar_fin_juego('tablas', 'repeticion')
+        
+    def dev_test_tablas_50_movimientos(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por regla de 50 movimientos"""
+        self.dev_forzar_fin_juego('tablas', 'regla_50_movimientos')
     # ------------------------------------------------------------------
 
 # Código para ejecutar el juego si este script es el principal

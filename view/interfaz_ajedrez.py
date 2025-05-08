@@ -162,7 +162,7 @@ class InterfazAjedrez:
             'tablero_pos': (500, 400),  # Bajado de 370 a 400 para más espacio arriba
             'panel_izq_pos': (0, 0),
             'panel_der_pos': (800, 0),
-            'reloj_pos': (500, 40),   # Subido de 50 a 40
+            'reloj_pos': (500, 75),   # Aumentado a 75 para acercar el reloj al tablero
         }
     
     def _cargar_imagenes_piezas(self) -> Dict[str, Dict[str, Optional[pygame.Surface]]]:
@@ -645,21 +645,23 @@ class InterfazAjedrez:
 
     def _dibujar_indicador_turno(self):
         """ Dibuja un texto indicando de quién es el turno. """
-        texto = f"Turno de: {self.turno_actual.capitalize()}"
-        color_texto = self.COLORES['gris_oscuro']
-        fuente_turno = self.fuente_normal
-        
-        texto_surf = fuente_turno.render(texto, True, color_texto)
-        
-        # Posicionar debajo del reloj
-        reloj_centro_x, reloj_centro_y = self.elementos_ui['tablero']['reloj_pos']
-        # Asumimos altura del reloj (aproximada por fuente + padding)
-        altura_reloj_aprox = fuente_turno.get_height() + 20 
-        pos_y = reloj_centro_y + altura_reloj_aprox // 2 + 15 # Espacio debajo del reloj
-        pos_x = reloj_centro_x
-        
-        texto_rect = texto_surf.get_rect(center=(pos_x, pos_y))
-        self.ventana.blit(texto_surf, texto_rect)
+        # Solo mostrar el indicador de turno si no hay un mensaje de estado activo
+        if not self.mensaje_estado:
+            texto = f"Turno de: {self.turno_actual.capitalize()}"
+            color_texto = self.COLORES['negro']
+            # Usar fuente normal en lugar de subtitulo para reducir tamaño
+            fuente_turno = self.fuente_normal
+            
+            texto_surf = fuente_turno.render(texto, True, color_texto)
+            
+            # Posicionar más abajo pero todavía separado del timer
+            centro_x = self.DIMENSIONES['ventana'][0] // 2
+            pos_y = 30 # Ajustado a 30 para bajar el mensaje
+            
+            texto_rect = texto_surf.get_rect(center=(centro_x, pos_y))
+            
+            # Dibujar solo el texto, sin fondo ni borde
+            self.ventana.blit(texto_surf, texto_rect)
 
     def _dibujar_mensaje_estado(self):
         """ Dibuja el mensaje de estado actual si existe. """
@@ -671,23 +673,18 @@ class InterfazAjedrez:
             # elif "Jaque" in self.mensaje_estado:
             #     color_texto = (200, 100, 0) # Naranja oscuro
                 
-            fuente_mensaje = self.fuente_subtitulo # Usar fuente más grande
+            # Usar fuente normal en lugar de subtitulo para hacer texto más pequeño
+            fuente_mensaje = self.fuente_normal
             
             texto_surf = fuente_mensaje.render(self.mensaje_estado, True, color_texto)
             
-            # Posicionar en la parte superior central, encima del reloj/turno
+            # Posicionar más abajo pero todavía separado del timer
             centro_x = self.DIMENSIONES['ventana'][0] // 2
-            pos_y = 25 # Más arriba
+            pos_y = 30 # Ajustado a 30 para bajar el mensaje
             
             texto_rect = texto_surf.get_rect(center=(centro_x, pos_y))
             
-            # Fondo semi-transparente opcional para legibilidad
-            fondo_rect = texto_rect.inflate(20, 10) # Añadir padding
-            fondo_surf = pygame.Surface(fondo_rect.size, pygame.SRCALPHA)
-            fondo_surf.fill((220, 220, 220, 180)) # Gris claro semi-transparente
-            self.ventana.blit(fondo_surf, fondo_rect)
-            
-            # Dibujar texto encima del fondo
+            # Dibujar solo el texto, sin fondo ni borde
             self.ventana.blit(texto_surf, texto_rect)
 
     def _dibujar_reloj(self):
@@ -705,15 +702,16 @@ class InterfazAjedrez:
         color_texto = self.COLORES['gris_oscuro']
         color_fondo = self.COLORES['gris_claro']
         fuente_reloj = self.fuente_normal # Usar fuente más pequeña
-        padding = 10 # Espacio entre el texto y el borde del fondo
+        padding_horizontal = 15 # Aumentado de 10 a 15
+        padding_vertical = 12   # Aumentado para más espacio vertical
 
         # Renderizar el texto para obtener su tamaño
         texto_surf = fuente_reloj.render(texto_tiempo, True, color_texto)
         texto_rect = texto_surf.get_rect()
 
         # Calcular tamaño y posición del rectángulo de fondo
-        fondo_ancho = texto_rect.width + 2 * padding
-        fondo_alto = texto_rect.height + 2 * padding
+        fondo_ancho = texto_rect.width + 2 * padding_horizontal
+        fondo_alto = texto_rect.height + 2 * padding_vertical
         pos_centro = self.elementos_ui['tablero']['reloj_pos']
         fondo_rect = pygame.Rect(0, 0, fondo_ancho, fondo_alto)
         fondo_rect.center = pos_centro
@@ -1392,7 +1390,7 @@ class InterfazAjedrez:
         # Definir posición y tamaño del menú (justo encima del botón de desarrollo)
         ancho_menu = 180
         alto_opcion = 30
-        num_opciones = 5
+        num_opciones = 7  # Aumentado de 5 a 7 para incluir las nuevas opciones
         alto_menu = alto_opcion * num_opciones + 10  # 5px de padding arriba y abajo
         
         x = self.DIMENSIONES['ventana'][0] - ancho_menu - 10  # 10px desde el borde derecho
@@ -1409,6 +1407,8 @@ class InterfazAjedrez:
             "Victoria Negras", 
             "Tablas (Ahogado)", 
             "Tablas (Insuficiente)",
+            "Tablas (Repetición)",
+            "Tablas (50 Movimientos)",
             "Cerrar Menú"
         ]
         
@@ -1468,4 +1468,8 @@ class InterfazAjedrez:
             self.controlador.dev_test_tablas_ahogado()
         elif opcion == "Tablas (Insuficiente)":
             self.controlador.dev_test_tablas_insuficiente()
+        elif opcion == "Tablas (Repetición)":
+            self.controlador.dev_test_tablas_repeticion()
+        elif opcion == "Tablas (50 Movimientos)":
+            self.controlador.dev_test_tablas_50_movimientos()
         # "Cerrar Menú" no requiere acción adicional 

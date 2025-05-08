@@ -65,6 +65,9 @@ class Tablero:
 
         # Estado del juego (en curso, jaque, jaque mate, tablas, etc.)
         self.estado_juego: Literal['en_curso', 'jaque', 'jaque_mate', 'tablas'] = 'en_curso'
+        
+        # Motivo específico de tablas (material_insuficiente, repeticion, regla_50_movimientos, ahogado)
+        self.motivo_tablas: Optional[str] = None
 
         # Número de movimiento completo (1 para el primer movimiento de blancas)
         self.numero_movimiento: int = 1
@@ -264,17 +267,20 @@ class Tablero:
         # 1. Comprobar condiciones de Tablas (que no dependen de movimientos legales)
         if self.contadorRegla50Movimientos >= 100: # Son 50 movimientos completos, 100 plies
             self.estado_juego = 'tablas'
+            self.motivo_tablas = 'regla_50_movimientos'
             logger.info("Tablas por regla de 50 movimientos.")
             return
         # Usar la instancia del gestor del histórico
         if self.gestor_historico.esTripleRepeticion():
             self.estado_juego = 'tablas'
+            self.motivo_tablas = 'repeticion'
             logger.info("Tablas por triple repetición.")
             return
         # Comprobar tablas por material insuficiente
         # Usar la instancia del evaluador de estado
         if self.evaluador_estado.esMaterialInsuficiente():
             self.estado_juego = 'tablas'
+            self.motivo_tablas = 'material_insuficiente'
             logger.info("Estado del juego actualizado a: tablas (material insuficiente)")
             return
 
@@ -293,11 +299,13 @@ class Tablero:
                # Comprobar si hay tablas por ahogado
                if not self.obtener_todos_movimientos_legales(color_jugador_actual):
                    self.estado_juego = 'tablas' # Ahogado
+                   self.motivo_tablas = 'ahogado'
                    logger.info(f"Estado del juego actualizado a: tablas (ahogado para {color_jugador_actual})")
            return
 
         # Si no es mate, ni ahogado, ni tablas por reglas, el juego sigue en curso (o en jaque)
         self.estado_juego = 'jaque' if esta_en_jaque else 'en_curso'
+        self.motivo_tablas = None  # Restablecer el motivo si el estado no es tablas
         logger.debug(f"Estado del juego actualizado a: {self.estado_juego}")
 
     # ==================================================================

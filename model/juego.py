@@ -259,9 +259,40 @@ class Juego:
         return self.color_activo
 
     def getEstadoJuego(self) -> str:
-        """ Devuelve el estado actual del juego. """
-        return self.estado
+        """
+        Devuelve el estado actual del juego.
+        Reconcilia el estado interno de la clase Juego con el estado del tablero.
         
+        Returns:
+            String con el estado del juego ('en_curso', 'jaque', 'jaque_mate', 'tablas', 'ahogado').
+        """
+        # Para casos normales, devolver el estado del tablero
+        tablero_estado = self.tablero.estado_juego
+        
+        # Si el estado interno es 'ahogado', dar prioridad a este sobre 'tablas'
+        if self.estado == 'ahogado':
+            return 'ahogado'
+        
+        # Si el estado interno es 'jaque_mate', asegurarnos de que coincida con el tablero
+        if self.estado == 'jaque_mate' and tablero_estado != 'jaque_mate':
+            # Sincronizar con el tablero
+            self.tablero.estado_juego = 'jaque_mate'
+            return 'jaque_mate'
+            
+        return tablero_estado
+        
+    def getMotivoTablas(self) -> Optional[str]:
+        """
+        Devuelve el motivo específico de las tablas, si el estado del juego es 'tablas'.
+        
+        Returns:
+            El motivo de las tablas ('ahogado', 'material_insuficiente', 'repeticion', 
+            'regla_50_movimientos') o None si no hay tablas.
+        """
+        if self.tablero.estado_juego == 'tablas':
+            return self.tablero.motivo_tablas
+        return None
+
     def obtener_datos_display(self) -> Dict[str, Dict]:
         """
         Recopila y devuelve los datos necesarios para actualizar la interfaz
@@ -289,7 +320,13 @@ class Juego:
         piezas_capturadas_blancas = []
         piezas_capturadas_negras = []
         
-        if hasattr(self.tablero, 'piezasCapturadas') and self.tablero.piezasCapturadas:
+        # Asegurarnos de que el tablero tenga el atributo piezasCapturadas
+        if not hasattr(self.tablero, 'piezasCapturadas'):
+            logger.debug("Inicializando atributo piezasCapturadas en el tablero")
+            self.tablero.piezasCapturadas = []
+            
+        # Procesar las piezas capturadas si existen
+        if self.tablero.piezasCapturadas:
             for pieza in self.tablero.piezasCapturadas:
                 try:
                     # Intentar obtener el color de la pieza (primero con get_color, luego con color)
@@ -316,7 +353,7 @@ class Juego:
             
             logger.debug(f"Piezas capturadas: Blancas={len(piezas_capturadas_blancas)}, Negras={len(piezas_capturadas_negras)}")
         else:
-            logger.warning("El objeto Tablero no tiene el atributo 'piezasCapturadas' o está vacío")
+            logger.debug("No hay piezas capturadas en el tablero")
             datos['blanco']['capturadas'] = []
             datos['negro']['capturadas'] = []
 
