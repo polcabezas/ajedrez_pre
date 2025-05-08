@@ -464,13 +464,13 @@ class InterfazAjedrez:
         # --- Dibujar Piezas Capturadas ---
         # Encabezado de piezas capturadas
         texto_capturas = self.fuente_normal.render("Piezas capturadas:", True, self.COLORES['gris_oscuro'])
-        self.ventana.blit(texto_capturas, (x + 10, 95))
+        self.ventana.blit(texto_capturas, (x + 10, 55))
         
         # Línea separadora debajo del encabezado
         pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
-                        (x + 5, 120), (x + self.DIMENSIONES['panel_lateral'] - 5, 120), 1)
+                        (x + 5, 80), (x + self.DIMENSIONES['panel_lateral'] - 5, 80), 1)
         
-        y_capturas = 130  # Posición Y inicial para las capturas
+        y_capturas = 90  # Posición Y inicial para las capturas
         x_capturas_start = x + 10
         max_ancho_panel = self.DIMENSIONES['panel_lateral'] - 20  # Margen
         tamaño_captura = 30  # Tamaño para los iconos
@@ -562,7 +562,7 @@ class InterfazAjedrez:
         self.ventana.blit(texto_valor, (x + 10, y_valor))
         
         # --- Dibujar Historial de Movimientos (en ambos paneles) ---
-        self._dibujar_historial_movimientos(x, y_valor + 40, jugador.get('color', 'blanco'))
+        self._dibujar_historial_movimientos(x, y_valor + 25, jugador.get('color', 'blanco'))
             
     def _dibujar_historial_movimientos(self, x, y_inicial, color_jugador):
         """
@@ -1129,7 +1129,7 @@ class InterfazAjedrez:
             return False
             
         # Aproximación: verificar si el clic está en la mitad inferior del panel
-        return pos[1] > 300  # Valor aproximado, ajustar según sea necesario
+        return pos[1] > 250  # Valor ajustado para la nueva posición del historial
         
     def _manejar_clic_historial(self, pos):
         """
