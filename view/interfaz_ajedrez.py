@@ -40,8 +40,8 @@ class InterfazAjedrez:
         'tablero': 560,  # Reducido de 600 a 560
         'casilla': 70,  # Calculado como 560 / 8
         'panel_lateral': 200,  # Ancho de los paneles laterales
-        'boton': (150, 50),  # Tamaño de botones
-        'dropdown': (250, 50),  # Tamaño de menús desplegables
+        'boton': (100, 30),  # Tamaño de botones
+        'dropdown': (450, 30),  # Tamaño de menús desplegables
     }
 
     def __init__(self, controlador):
@@ -67,8 +67,8 @@ class InterfazAjedrez:
         fuente_principal = 'SF Pro, Arial' 
         self.fuente_titulo = pygame.font.SysFont(fuente_principal, 48, italic=False, bold=True)
         self.fuente_subtitulo = pygame.font.SysFont(fuente_principal, 24, bold=False, italic=False)
-        self.fuente_normal = pygame.font.SysFont(fuente_principal, 20, bold=False, italic=False)
-        self.fuente_pequeña = pygame.font.SysFont(fuente_principal, 16, bold=False, italic=False)
+        self.fuente_normal = pygame.font.SysFont(fuente_principal, 16, bold=False, italic=False)
+        self.fuente_pequeña = pygame.font.SysFont(fuente_principal, 12, bold=False, italic=False)
         
         # Variables de estado
         self.vista_actual = 'configuracion'  # 'configuracion' o 'tablero'
@@ -347,7 +347,10 @@ class InterfazAjedrez:
         
         # Dibujar texto de la selección actual
         texto_seleccion = self.fuente_normal.render(dropdown['seleccionado'], True, self.COLORES['gris_oscuro'])
-        self.ventana.blit(texto_seleccion, (x + 10, y + alto // 2 - texto_seleccion.get_height() // 2))
+        # Centrar el texto horizontalmente
+        texto_x = x + (ancho - texto_seleccion.get_width()) // 2
+        texto_y = y + alto // 2 - texto_seleccion.get_height() // 2
+        self.ventana.blit(texto_seleccion, (texto_x, texto_y))
         
         # Dibujar flecha del menú
         flecha_puntos = [
@@ -367,8 +370,10 @@ class InterfazAjedrez:
                 
                 # Dibujar texto de la opción
                 texto_opcion = self.fuente_normal.render(opcion, True, self.COLORES['gris_oscuro'])
-                # Añadir un pequeño margen
-                self.ventana.blit(texto_opcion, (x + 10, y_opcion_actual + alto // 2 - texto_opcion.get_height() // 2))
+                # Centrar el texto horizontalmente
+                texto_opcion_x = x + (ancho - texto_opcion.get_width()) // 2
+                texto_opcion_y = y_opcion_actual + alto // 2 - texto_opcion.get_height() // 2
+                self.ventana.blit(texto_opcion, (texto_opcion_x, texto_opcion_y))
                 
                 # Almacenar rectángulos de opciones para detección de clics (opcional, ya se hace en _verificar_clic_dropdown)
                 # rect_opcion = pygame.Rect(x, y_opcion_actual, ancho, alto)
