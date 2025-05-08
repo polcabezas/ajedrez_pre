@@ -106,8 +106,16 @@ class ControladorJuego:
         """
         Llamado por la Vista cuando el usuario pulsa 'Jugar'.
         Obtiene la configuración, inicializa el modelo y cambia la vista.
+        Valida que se hayan seleccionado las opciones requeridas antes de iniciar.
         """
         config = self.vista.obtener_configuracion()
+        
+        # Verificar si la configuración es válida
+        if config is None:
+            # Si no hay configuración válida, mostrar mensaje de error
+            self.vista.mostrar_error_config("Debes seleccionar un tipo y una modalidad de juego")
+            return
+            
         logger.debug("Controlador solicitando inicio de juego con config: %s", config)
         
         # === PASO CLAVE: Inicializar/Configurar el modelo ===

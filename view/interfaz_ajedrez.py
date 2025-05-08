@@ -103,6 +103,10 @@ class InterfazAjedrez:
             'opciones': ['Humano vs Humano', 'Humano vs CPU', 'CPU vs CPU'],
             'seleccionado': 'Escoge la modalidad',
         }
+
+        # Mensaje de error para la pantalla de configuración
+        self.mensaje_error_config = None
+        self.tiempo_mostrar_error = None
         
         # Elementos de UI
         self.elementos_ui = {}
@@ -328,6 +332,48 @@ class InterfazAjedrez:
         # --- 4. Dibujar el dropdown abierto (si existe) al final --- 
         if dropdown_abierto:
             self._dibujar_dropdown(dropdown_abierto, self.elementos_ui['config'][f'{dropdown_abierto}_pos'])
+            
+        # --- 5. Dibujar mensaje de error si existe ---
+        self._dibujar_mensaje_error_config()
+            
+    def _dibujar_mensaje_error_config(self):
+        """
+        Dibuja un mensaje de error en la pantalla de configuración, si existe.
+        El mensaje se muestra en rojo debajo del botón Jugar.
+        """
+        if self.mensaje_error_config:
+            # Verificar si el tiempo de mostrar error ha expirado
+            if self.tiempo_mostrar_error and pygame.time.get_ticks() > self.tiempo_mostrar_error:
+                self.mensaje_error_config = None
+                self.tiempo_mostrar_error = None
+                return
+            
+            # Renderizar mensaje de error en color rojo
+            texto_error = self.fuente_normal.render(self.mensaje_error_config, True, (200, 0, 0))  # Rojo
+            
+            # Posicionar debajo del botón Jugar
+            pos_boton_jugar = self.elementos_ui['config']['boton_jugar_pos']
+            pos_error = (pos_boton_jugar[0], pos_boton_jugar[1] + 40)  # 40px debajo del botón
+            
+            # Centrar horizontalmente
+            rect_error = texto_error.get_rect(center=pos_error)
+            
+            # Dibujar texto
+            self.ventana.blit(texto_error, rect_error)
+            
+    def mostrar_error_config(self, mensaje, duracion=3000):
+        """
+        Establece un mensaje de error para mostrar en la pantalla de configuración.
+        
+        Args:
+            mensaje: Texto del mensaje de error.
+            duracion: Duración en milisegundos que se mostrará el mensaje (por defecto 3 segundos).
+        """
+        self.mensaje_error_config = mensaje
+        self.tiempo_mostrar_error = pygame.time.get_ticks() + duracion
+        
+        # Forzar actualización inmediata para mostrar el error
+        self.actualizar()
     
     def _dibujar_dropdown(self, nombre, posicion):
         """
@@ -1107,11 +1153,25 @@ class InterfazAjedrez:
         
         Returns:
             Dict: Diccionario con la configuración seleccionada.
+            None: Si no se ha seleccionado alguna opción requerida.
         """
+        # Valores por defecto de los dropdowns
+        tipo_juego_default = 'Escoge el tipo de juego'
+        modalidad_default = 'Escoge la modalidad'
+        
+        # Verificar si ambos dropdowns tienen selecciones válidas
+        tipo_juego_seleccionado = self.dropdown_tipo_juego['seleccionado']
+        modalidad_seleccionada = self.dropdown_modalidad['seleccionado']
+        
+        # Si alguno tiene el valor por defecto, retornar None
+        if tipo_juego_seleccionado == tipo_juego_default or modalidad_seleccionada == modalidad_default:
+            return None
+        
+        # Si ambos tienen valores válidos, retornar la configuración
         return {
-            'tipo_juego': self.dropdown_tipo_juego['seleccionado'],
-            'modalidad': self.dropdown_modalidad['seleccionado']
-        } 
+            'tipo_juego': tipo_juego_seleccionado,
+            'modalidad': modalidad_seleccionada
+        }
 
     def mostrar_mensaje_estado(self, texto: Optional[str]):
         """
