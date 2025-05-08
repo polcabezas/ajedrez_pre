@@ -259,7 +259,6 @@ class ControladorJuego:
         Llamado después de que un movimiento se realiza con éxito en el modelo.
         Consulta el estado actualizado del juego (turno, jaque, mate, tablas) 
         y actualiza la vista si es necesario.
-        (Por ahora, solo imprime mensajes, la lógica completa vendrá después).
         """
         logger.debug("Controlador: Actualizando estado post-movimiento.")
         
@@ -278,35 +277,40 @@ class ControladorJuego:
             logger.debug("Nuevo turno: %s, Estado: %s, Datos Display: %s", nuevo_turno, estado_juego, datos_display)
             
             # === Actualizar Resto de la Vista ===
-            # Actualizar turno visualmente (ya se hizo en cambiar_turno_temporizador, pero redundancia no daña)
-            # self.vista.turno_actual = nuevo_turno # Comentado ya que cambiar_turno_temporizador lo hace
-            
             # Actualizar datos de jugadores (nombre se mantiene, tiempo y capturas cambian)
-            # NOTA: Los tiempos ahora se actualizan en vista.actualizar(), no necesitamos pasarlos aquí.
-            # self.vista.jugadores['blanco']['tiempo'] = datos_display['blanco']['tiempo'] # Comentado
-            self.vista.jugadores['blanco']['piezas_capturadas'] = datos_display['blanco']['capturadas']
-            # self.vista.jugadores['negro']['tiempo'] = datos_display['negro']['tiempo'] # Comentado
-            self.vista.jugadores['negro']['piezas_capturadas'] = datos_display['negro']['capturadas']
+            if 'blanco' in datos_display and 'capturadas' in datos_display['blanco']:
+                piezas_capturadas_blanco = datos_display['blanco']['capturadas']
+                self.vista.jugadores['blanco']['piezas_capturadas'] = piezas_capturadas_blanco
+                if piezas_capturadas_blanco:
+                    tipos_capturados = [type(p).__name__ for p in piezas_capturadas_blanco]
+                    logger.debug(f"Actualizadas piezas capturadas del jugador blanco: {len(piezas_capturadas_blanco)} piezas: {tipos_capturados}")
+                
+            if 'negro' in datos_display and 'capturadas' in datos_display['negro']:
+                piezas_capturadas_negro = datos_display['negro']['capturadas']
+                self.vista.jugadores['negro']['piezas_capturadas'] = piezas_capturadas_negro
+                if piezas_capturadas_negro:
+                    tipos_capturados = [type(p).__name__ for p in piezas_capturadas_negro]
+                    logger.debug(f"Actualizadas piezas capturadas del jugador negro: {len(piezas_capturadas_negro)} piezas: {tipos_capturados}")
             
-            # Actualizar mensaje de estado
-            if estado_juego in ['jaque_mate', 'tablas', 'ahogado']: 
-                self.juego_terminado = True
-                logger.info("INFO: ¡Partida terminada! Estado: %s", estado_juego)
-                mensaje_final = {
-                    'jaque_mate': "¡Jaque Mate!",
-                    'tablas': "¡Tablas!",
-                    'ahogado': "¡Tablas por Ahogado!"
-                }.get(estado_juego, f"¡Fin! ({estado_juego})")
-                self.vista.mostrar_mensaje_estado(mensaje_final)
-            elif estado_juego == 'jaque':
-                 logger.info("INFO: ¡Jaque al rey %s!", nuevo_turno) # Ahora sabemos a quién!
-                 self.vista.mostrar_mensaje_estado("¡Jaque!")
-            else: 
-                 self.vista.mostrar_mensaje_estado(None)
-                 
+            # Actualizar mensaje de estado del juego si es necesario
+            if estado_juego == 'jaque':
+                self.vista.mostrar_mensaje_estado(f"Jaque al Rey {nuevo_turno}")
+            elif estado_juego == 'jaque_mate':
+                color_ganador = 'negro' if nuevo_turno == 'blanco' else 'blanco'
+                self.vista.mostrar_mensaje_estado(f"Jaque Mate. Gana {color_ganador}.")
+            elif estado_juego == 'tablas':
+                self.vista.mostrar_mensaje_estado("Tablas.")
+            elif estado_juego == 'ahogado':
+                self.vista.mostrar_mensaje_estado("Ahogado. Tablas.")
+            else:
+                self.vista.mostrar_mensaje_estado(None) # Limpiar mensaje si no hay estado especial
+                
+            # Actualizar tablero
+            tablero_actual = self.obtener_tablero()
+            self.vista.actualizar(tablero_actual)
+            
         except Exception as e:
-            logger.error("ERROR al obtener estado post-movimiento del modelo: %s", e)
-            # Considerar mostrar error en UI?
+            logger.error(f"Excepción en _actualizar_estado_post_movimiento: {e}", exc_info=True)
 
     def iniciar(self):
         """

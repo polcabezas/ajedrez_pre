@@ -104,6 +104,39 @@ class Pieza:
         # se determina en Tablero.obtenerPosicionActual con upper/lower case.
         return self.obtener_simbolo()
 
+    def getValor(self) -> int:
+        """
+        Devuelve el valor estándar de la pieza.
+        Los valores estándar son: peón=1, caballo=3, alfil=3, torre=5, reina=9, rey=0.
+        Las subclases pueden sobrescribir este método para valores específicos.
+        
+        Returns:
+            int: El valor numérico de la pieza
+        """
+        # Determinar la clase/tipo de pieza y devolver el valor correspondiente
+        nombre_clase = type(self).__name__.lower()
+        valores = {
+            'peon': 1,
+            'caballo': 3,
+            'alfil': 3,
+            'torre': 5,
+            'reina': 9,
+            'rey': 0  # El rey no tiene valor práctico para cálculos
+        }
+        
+        # Devolver el valor correspondiente o 0 si la clase no está en el diccionario
+        return valores.get(nombre_clase, 0)
+
+    def get_color(self) -> Literal['blanco', 'negro']:
+        """
+        Devuelve el color de la pieza.
+        Método de compatibilidad utilizado por algunas partes del código.
+        
+        Returns:
+            Literal['blanco', 'negro']: El color de la pieza ('blanco' o 'negro')
+        """
+        return self.color
+
     def __str__(self) -> str:
         """ Representación informal de la pieza. """
         return f"{type(self).__name__} {self.color} en {self.posicion}"

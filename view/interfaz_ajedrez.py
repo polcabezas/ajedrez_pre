@@ -99,8 +99,8 @@ class InterfazAjedrez:
         
         # Información de jugadores y temporizador
         self.jugadores = {
-            'blanco': {'nombre': 'Jugador 1', 'tiempo': '00:00', 'piezas_capturadas': []},
-            'negro': {'nombre': 'Jugador 2', 'tiempo': '00:00', 'piezas_capturadas': []},
+            'blanco': {'nombre': 'Jugador 1', 'tiempo': '00:00', 'piezas_capturadas': [], 'color': 'blanco'},
+            'negro': {'nombre': 'Jugador 2', 'tiempo': '00:00', 'piezas_capturadas': [], 'color': 'negro'},
         }
         self.tiempo_acumulado = {'blanco': 0, 'negro': 0} # Tiempo en milisegundos
         self.tiempo_inicio_turno = None # Momento (ticks) en que empezó el turno actual
@@ -443,6 +443,7 @@ class InterfazAjedrez:
     def _dibujar_panel_lateral(self, x, jugador):
         """
         Dibuja un panel lateral con información del jugador.
+        Incluye la sección de piezas capturadas con su valor total.
         
         Args:
             x: Posición x del borde izquierdo del panel.
@@ -454,42 +455,176 @@ class InterfazAjedrez:
         
         # Nombre del jugador
         texto_nombre = self.fuente_normal.render(jugador['nombre'], True, self.COLORES['gris_oscuro'])
-        self.ventana.blit(texto_nombre, (x + 10, 50))
+        self.ventana.blit(texto_nombre, (x + 10, 20))
+        
+        # Línea separadora debajo del nombre
+        pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
+                        (x + 5, 45), (x + self.DIMENSIONES['panel_lateral'] - 5, 45), 1)
         
         # --- Dibujar Piezas Capturadas ---
-        y_capturas = 90 # Posición Y inicial para las capturas
-        x_capturas_start = x + 10
-        max_ancho_panel = self.DIMENSIONES['panel_lateral'] - 20 # Margen
-        tamaño_captura = 20 # Tamaño pequeño para los iconos
-        espacio_captura = 5 # Espacio entre iconos
-        x_actual = x_capturas_start
+        # Encabezado de piezas capturadas
+        texto_capturas = self.fuente_normal.render("Piezas capturadas:", True, self.COLORES['gris_oscuro'])
+        self.ventana.blit(texto_capturas, (x + 10, 95))
         
+        # Línea separadora debajo del encabezado
+        pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
+                        (x + 5, 120), (x + self.DIMENSIONES['panel_lateral'] - 5, 120), 1)
+        
+        y_capturas = 130  # Posición Y inicial para las capturas
+        x_capturas_start = x + 10
+        max_ancho_panel = self.DIMENSIONES['panel_lateral'] - 20  # Margen
+        tamaño_captura = 30  # Tamaño para los iconos
+        espacio_captura = 5  # Espacio entre iconos
+        piezas_por_fila = max(1, (max_ancho_panel - espacio_captura) // (tamaño_captura + espacio_captura))
+        
+        # Contadores para agrupar piezas por tipo
+        conteo_tipos = {
+            'peon': 0,
+            'caballo': 0,
+            'alfil': 0,
+            'torre': 0,
+            'reina': 0,
+            'rey': 0
+        }
+        
+        # Valor total de piezas capturadas
+        valor_total = 0
+        
+        # Inicializar y_actual a y_capturas por defecto (para cuando no hay piezas capturadas)
+        y_actual = y_capturas
+        x_actual = x_capturas_start
+        i = 0
+        
+        # Registrar en el log lo que se va a dibujar
         if 'piezas_capturadas' in jugador:
-            # Ordenar por valor (opcional, pero común) - Requiere método getValor() en Pieza
-            # piezas_ordenadas = sorted(jugador['piezas_capturadas'], key=lambda p: p.getValor(), reverse=True)
-            piezas_ordenadas = jugador['piezas_capturadas'] # Sin ordenar por ahora
-            
-            for pieza in piezas_ordenadas:
+            num_piezas = len(jugador['piezas_capturadas']) if jugador['piezas_capturadas'] else 0
+            logger.debug(f"Dibujando {num_piezas} piezas capturadas para {jugador.get('nombre', 'Jugador')} ({jugador.get('color', 'color desconocido')})")
+        
+        if 'piezas_capturadas' in jugador and jugador['piezas_capturadas']:
+            # Contar piezas por tipo y calcular valor total
+            for pieza in jugador['piezas_capturadas']:
                 tipo = type(pieza).__name__.lower()
-                color_pieza = pieza.get_color()
-                imagen_orig = self.imagenes_piezas.get(color_pieza, {}).get(tipo)
+                if tipo in conteo_tipos:
+                    conteo_tipos[tipo] += 1
+                    try:
+                        if hasattr(pieza, 'getValor') and callable(pieza.getValor):
+                            valor_total += pieza.getValor()
+                        else:
+                            # Valores predeterminados si getValor no está disponible
+                            valores_default = {'peon': 1, 'caballo': 3, 'alfil': 3, 'torre': 5, 'reina': 9, 'rey': 0}
+                            valor_total += valores_default.get(tipo, 0)
+                    except Exception as e:
+                        logger.error(f"Error al calcular valor de pieza: {e}")
+            
+            # Dibujar piezas agrupadas por tipo
+            # Ordenar por valor (de mayor a menor)
+            # Utilizamos valores predeterminados para ordenar
+            valores_orden = {'reina': 9, 'torre': 5, 'alfil': 3, 'caballo': 3, 'peon': 1, 'rey': 0}
+            tipos_ordenados = sorted(conteo_tipos.keys(), 
+                                    key=lambda t: valores_orden.get(t, 0), 
+                                    reverse=True)
+            
+            for tipo in tipos_ordenados:
+                cantidad = conteo_tipos[tipo]
+                if cantidad > 0:
+                    # Solo dibujar los tipos que tienen al menos una pieza
+                    # Buscar el color correspondiente (para capturadas, es el color opuesto al jugador)
+                    try:
+                        color_pieza = 'negro' if jugador.get('color', 'blanco') == 'blanco' else 'blanco'
+                        imagen_orig = self.imagenes_piezas.get(color_pieza, {}).get(tipo)
+                        
+                        if imagen_orig:
+                            imagen_captura = pygame.transform.smoothscale(imagen_orig, (tamaño_captura, tamaño_captura))
+                            
+                            # Cambiar de fila si no hay espacio
+                            if i % piezas_por_fila == 0 and i > 0:
+                                x_actual = x_capturas_start
+                                y_actual += tamaño_captura + espacio_captura
+                            
+                            # Dibujar la pieza
+                            self.ventana.blit(imagen_captura, (x_actual, y_actual))
+                            
+                            # Si hay más de una del mismo tipo, mostrar un contador
+                            if cantidad > 1:
+                                texto_contador = self.fuente_pequeña.render(f"x{cantidad}", True, self.COLORES['negro'])
+                                self.ventana.blit(texto_contador, (x_actual + tamaño_captura - 15, y_actual + tamaño_captura - 15))
+                            
+                            x_actual += tamaño_captura + espacio_captura
+                            i += 1
+                        else:
+                            logger.warning(f"No se encontró imagen para pieza capturada: {tipo} {color_pieza}")
+                    except Exception as e:
+                        logger.error(f"Error al dibujar pieza capturada de tipo {tipo}: {e}")
+        
+        # Mostrar valor total de captura
+        y_valor = y_actual + tamaño_captura + 15
+        texto_valor = self.fuente_normal.render(f"Valor total: {valor_total}", True, self.COLORES['gris_oscuro'])
+        self.ventana.blit(texto_valor, (x + 10, y_valor))
+        
+        # --- Dibujar Historial de Movimientos (en ambos paneles) ---
+        self._dibujar_historial_movimientos(x, y_valor + 40, jugador.get('color', 'blanco'))
+            
+    def _dibujar_historial_movimientos(self, x, y_inicial, color_jugador):
+        """
+        Dibuja el historial de movimientos específico para cada jugador.
+        En el panel izquierdo se muestran los movimientos del jugador blanco,
+        en el panel derecho los del jugador negro.
+        
+        Args:
+            x: Posición x donde comenzar a dibujar.
+            y_inicial: Posición y donde comenzar a dibujar.
+            color_jugador: Color del jugador ('blanco' o 'negro').
+        """
+        # Rectángulo para el historial
+        ancho_historial = self.DIMENSIONES['panel_lateral'] - 20  # Margen
+        alto_historial = 200  # Alto fijo para el área de historial
+        x_historial = x + 10
+        
+        # Encabezado del historial
+        texto_historial = self.fuente_normal.render("Histórico de movimientos:", True, self.COLORES['gris_oscuro'])
+        self.ventana.blit(texto_historial, (x_historial, y_inicial))
+        
+        # Línea separadora debajo del encabezado
+        pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
+                       (x + 5, y_inicial + 25), (x + self.DIMENSIONES['panel_lateral'] - 5, y_inicial + 25), 1)
+        
+        # Obtener el historial de movimientos del tablero
+        tablero = self.controlador.obtener_tablero()
+        if not tablero or not hasattr(tablero, 'gestor_historico'):
+            return
+        
+        # Filtrar movimientos para mostrar solo los del color correspondiente al panel
+        movimientos_filtrados = []
+        try:
+            if hasattr(tablero, 'gestor_historico') and tablero.gestor_historico:
+                for idx, mov in enumerate(tablero.gestor_historico.historial_completo):
+                    if mov['color'] == color_jugador:
+                        num = idx // 2 + 1  # Convertir a número de movimiento (1, 2, 3...)
+                        movimientos_filtrados.append({
+                            'numero': num,
+                            'notacion_san': mov['notacion_san'],
+                            'color': mov['color'],
+                            'es_enroque': mov.get('es_enroque', False),
+                        })
+        except Exception as e:
+            logger.error(f"Error al procesar historial de movimientos: {e}")
+            
+        # Mostrar los movimientos en formato simple
+        y_offset = 35  # Margen inicial desde el encabezado
+        for idx, mov in enumerate(movimientos_filtrados):
+            numero = mov['numero']
+            notacion = mov['notacion_san']
+            
+            # Formatear como se muestra en la imagen
+            if mov.get('es_enroque', False) and 'O-O' in notacion and '-O' not in notacion:
+                texto_mov = f"{numero}. O-O (Enroque corto)"
+            else:
+                texto_mov = f"{numero}. {notacion}"
                 
-                if imagen_orig:
-                    imagen_captura = pygame.transform.smoothscale(imagen_orig, (tamaño_captura, tamaño_captura))
-                    # Comprobar si cabe en la línea actual
-                    if x_actual + tamaño_captura > x + max_ancho_panel:
-                         # Pasar a la siguiente línea
-                         x_actual = x_capturas_start
-                         y_capturas += tamaño_captura + espacio_captura
-                         
-                    self.ventana.blit(imagen_captura, (x_actual, y_capturas))
-                    x_actual += tamaño_captura + espacio_captura
-                else:
-                    logger.warning(f"No se encontró imagen para pieza capturada: {tipo} {color_pieza}")
-                    # Dibujar un placeholder? 
-                    # pygame.draw.rect(self.ventana, (100,100,100), (x_actual, y_capturas, tamaño_captura, tamaño_captura), 1)
-                    # x_actual += tamaño_captura + espacio_captura
-    
+            mov_surf = self.fuente_pequeña.render(texto_mov, True, self.COLORES['gris_oscuro'])
+            self.ventana.blit(mov_surf, (x_historial, y_inicial + y_offset))
+            y_offset += self.fuente_pequeña.get_height() + 5
+
     def _dibujar_indicador_turno(self):
         """ Dibuja un texto indicando de quién es el turno. """
         texto = f"Turno de: {self.turno_actual.capitalize()}"
@@ -681,12 +816,13 @@ class InterfazAjedrez:
         """
         Gestiona el cambio de turno en el temporizador.
         Acumula el tiempo del jugador anterior y reinicia el contador para el nuevo.
+        También actualiza los colores de los jugadores si es necesario.
 
         Args:
             nuevo_turno: El color del jugador cuyo turno comienza ('blanco' o 'negro').
         """
         if not self.temporizador_activo or self.tiempo_inicio_turno is None:
-            print("[Interfaz Warning] Se intentó cambiar turno sin temporizador activo.")
+            logger.warning("[Interfaz] Se intentó cambiar turno sin temporizador activo.")
             # Aún así, actualizamos el turno visualmente
             self.turno_actual = nuevo_turno
             return
@@ -696,10 +832,15 @@ class InterfazAjedrez:
         
         # Acumular tiempo para el jugador que acaba de mover
         self.tiempo_acumulado[self.turno_actual] += tiempo_transcurrido
-        print(f"[Interfaz] Tiempo acumulado {self.turno_actual}: {self.tiempo_acumulado[self.turno_actual]/1000:.2f}s") # Log
+        logger.debug(f"[Interfaz] Tiempo acumulado {self.turno_actual}: {self.tiempo_acumulado[self.turno_actual]/1000:.2f}s")
         
         # Actualizar al nuevo turno
         self.turno_actual = nuevo_turno
+        
+        # Asegurar que los jugadores tengan sus colores establecidos
+        # Esto es importante para mostrar correctamente las piezas capturadas
+        self.jugadores['blanco']['color'] = 'blanco'
+        self.jugadores['negro']['color'] = 'negro'
         
         # Registrar el inicio del nuevo turno
         self.tiempo_inicio_turno = pygame.time.get_ticks()
@@ -760,7 +901,11 @@ class InterfazAjedrez:
             # Eventos para la vista del tablero
             elif self.vista_actual == 'tablero':
                 if evento.type == pygame.MOUSEBUTTONDOWN:
-                    self._manejar_clic_tablero(evento.pos)
+                    # Verificar si se hizo clic en el historial de movimientos
+                    if self._es_clic_en_historial(evento.pos):
+                        self._manejar_clic_historial(evento.pos)
+                    else:
+                        self._manejar_clic_tablero(evento.pos)
                 elif evento.type == pygame.MOUSEMOTION and self.pieza_seleccionada:
                     # Manejar arrastre de piezas (implementar si se desea)
                     pass
@@ -959,3 +1104,56 @@ class InterfazAjedrez:
             'tipo_juego': self.dropdown_tipo_juego['seleccionado'],
             'modalidad': self.dropdown_modalidad['seleccionado']
         } 
+
+    def _es_clic_en_historial(self, pos):
+        """
+        Verifica si un clic fue en el área del historial de movimientos.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+            
+        Returns:
+            bool: True si el clic fue en el área del historial.
+        """
+        # Coordenadas del panel lateral derecho (negro)
+        x_panel = self.DIMENSIONES['ventana'][0] - self.DIMENSIONES['panel_lateral']
+        
+        # Solo si el clic está en el panel lateral derecho
+        if pos[0] < x_panel:
+            return False
+            
+        # Para determinar la posición y, necesitamos calcular dónde comienza el historial
+        # Esto depende de cuántas piezas capturadas hay, por lo que es variable
+        tablero = self.controlador.obtener_tablero()
+        if not tablero:
+            return False
+            
+        # Aproximación: verificar si el clic está en la mitad inferior del panel
+        return pos[1] > 300  # Valor aproximado, ajustar según sea necesario
+        
+    def _manejar_clic_historial(self, pos):
+        """
+        Maneja clics en el área del historial de movimientos.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        # En una implementación completa, este método calcularía qué movimiento
+        # se clicó y saltaría a esa posición en el historial.
+        
+        # Para esta implementación básica, simplemente registramos que se detectó un clic
+        logger.debug(f"Clic detectado en historial de movimientos en posición {pos}")
+        
+        # Aquí iría la lógica para:
+        # 1. Determinar qué movimiento del historial se clicó
+        # 2. Obtener la representación de tablero correspondiente a ese movimiento
+        # 3. Cargar esa representación en el tablero actual
+        
+        # Esto requeriría que cada movimiento en el historial tenga asociada
+        # una representación del estado del tablero, o la capacidad de recrear
+        # el estado del tablero hasta ese movimiento.
+        
+        # Ejemplo conceptual (no implementado):
+        # indice_movimiento = self._calcular_indice_movimiento_desde_pos(pos)
+        # if indice_movimiento is not None:
+        #     self.controlador.saltar_a_movimiento(indice_movimiento) 

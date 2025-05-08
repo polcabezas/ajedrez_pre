@@ -224,18 +224,35 @@ class Juego:
         # Obtener piezas capturadas (usando la lista del tablero)
         piezas_capturadas_blancas = []
         piezas_capturadas_negras = []
-        if hasattr(self.tablero, 'piezasCapturadas'):
+        
+        if hasattr(self.tablero, 'piezasCapturadas') and self.tablero.piezasCapturadas:
             for pieza in self.tablero.piezasCapturadas:
-                if pieza.get_color() == 'blanco':
-                    piezas_capturadas_blancas.append(pieza)
-                else:
-                    piezas_capturadas_negras.append(pieza)
+                try:
+                    # Intentar obtener el color de la pieza (primero con get_color, luego con color)
+                    color_pieza = None
+                    if hasattr(pieza, 'get_color') and callable(pieza.get_color):
+                        color_pieza = pieza.get_color()
+                    elif hasattr(pieza, 'color'):
+                        color_pieza = pieza.color
+                    
+                    # Distribuir la pieza según su color
+                    if color_pieza == 'blanco':
+                        piezas_capturadas_blancas.append(pieza)
+                    elif color_pieza == 'negro':
+                        piezas_capturadas_negras.append(pieza)
+                    else:
+                        logger.warning(f"Pieza capturada con color desconocido: {pieza}")
+                except Exception as e:
+                    logger.error(f"Error al procesar pieza capturada: {e}")
             
+            # IMPORTANTE: Cada jugador ve las piezas que ha capturado, no las suyas que han sido capturadas
             # Blanco muestra las negras capturadas, Negro muestra las blancas capturadas.
             datos['blanco']['capturadas'] = piezas_capturadas_negras
             datos['negro']['capturadas'] = piezas_capturadas_blancas
+            
+            logger.debug(f"Piezas capturadas: Blancas={len(piezas_capturadas_blancas)}, Negras={len(piezas_capturadas_negras)}")
         else:
-            logger.warning("El objeto Tablero no tiene el atributo 'piezasCapturadas'")
+            logger.warning("El objeto Tablero no tiene el atributo 'piezasCapturadas' o está vacío")
             datos['blanco']['capturadas'] = []
             datos['negro']['capturadas'] = []
 
