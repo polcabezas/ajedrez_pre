@@ -27,6 +27,9 @@ from model.piezas.pieza import Pieza
 from model.tablero import Tablero
 from view.interfaz_ajedrez import InterfazAjedrez
 
+# Importar KillGame para uso en desarrollo
+from model.kill_game import KillGame
+
 class ControladorJuego:
     """
     Coordina la interacción entre el modelo (lógica del juego) y 
@@ -298,10 +301,16 @@ class ControladorJuego:
             elif estado_juego == 'jaque_mate':
                 color_ganador = 'negro' if nuevo_turno == 'blanco' else 'blanco'
                 self.vista.mostrar_mensaje_estado(f"Jaque Mate. Gana {color_ganador}.")
+                self.juego_terminado = True
+                self.mostrar_popup_fin_juego('victoria_' + color_ganador, 'jaque_mate')
             elif estado_juego == 'tablas':
                 self.vista.mostrar_mensaje_estado("Tablas.")
+                self.juego_terminado = True
+                self.mostrar_popup_fin_juego('tablas', 'material_insuficiente')
             elif estado_juego == 'ahogado':
                 self.vista.mostrar_mensaje_estado("Ahogado. Tablas.")
+                self.juego_terminado = True
+                self.mostrar_popup_fin_juego('tablas', 'ahogado')
             else:
                 self.vista.mostrar_mensaje_estado(None) # Limpiar mensaje si no hay estado especial
                 
@@ -311,7 +320,96 @@ class ControladorJuego:
             
         except Exception as e:
             logger.error(f"Excepción en _actualizar_estado_post_movimiento: {e}", exc_info=True)
-
+            
+    def mostrar_popup_fin_juego(self, resultado, motivo=None):
+        """
+        Muestra el popup de fin de juego con el resultado correspondiente.
+        
+        Args:
+            resultado: Tipo de resultado ('victoria_blanco', 'victoria_negro', 'tablas')
+            motivo: Motivo específico del fin de juego ('jaque_mate', 'ahogado', etc.)
+        """
+        if not self.juego_terminado:
+            self.juego_terminado = True
+        
+        logger.info(f"Fin del juego: {resultado} por {motivo}")
+        self.vista.mostrar_fin_de_juego(resultado, motivo)
+    
+    def reiniciar_juego(self):
+        """
+        Reinicia el juego con la misma configuración.
+        """
+        logger.info("Reiniciando juego con la misma configuración")
+        
+        # Reiniciar estado del controlador
+        self.casilla_origen_seleccionada = None
+        self.movimientos_validos_cache = []
+        self.juego_terminado = False
+        
+        # Reiniciar modelo (tablero, estado de juego, etc.)
+        exito_reinicio = False
+        if hasattr(self.modelo, 'reiniciar') and callable(self.modelo.reiniciar):
+            exito_reinicio = self.modelo.reiniciar()
+        else:
+            # Fallback si no existe el método reiniciar
+            config = self.vista.obtener_configuracion()
+            if hasattr(self.modelo, 'configurar_nueva_partida') and callable(self.modelo.configurar_nueva_partida):
+                self.modelo.configurar_nueva_partida(config)
+                exito_reinicio = True
+            else:
+                logger.warning("No se encontró método para reiniciar el modelo. Creando nuevo tablero.")
+                self.modelo.tablero = Tablero()
+                exito_reinicio = True
+        
+        # Actualizar la vista con los datos del modelo reiniciado
+        if exito_reinicio:
+            # Limpiar piezas capturadas en la vista (siguiendo patrón MVC)
+            self.vista.jugadores['blanco']['piezas_capturadas'] = []
+            self.vista.jugadores['negro']['piezas_capturadas'] = []
+            
+            # Si el modelo tiene datos de jugador/piezas capturadas, usarlos para actualizar la vista
+            try:
+                datos_display = self.modelo.obtener_datos_display()
+                if 'blanco' in datos_display and 'capturadas' in datos_display['blanco']:
+                    self.vista.jugadores['blanco']['piezas_capturadas'] = datos_display['blanco']['capturadas']
+                if 'negro' in datos_display and 'capturadas' in datos_display['negro']:
+                    self.vista.jugadores['negro']['piezas_capturadas'] = datos_display['negro']['capturadas']
+                logger.debug("Piezas capturadas actualizadas en vista desde modelo después de reiniciar")
+            except Exception as e:
+                logger.error(f"Error al obtener datos de display después de reiniciar: {e}")
+        
+        # La vista ya habrá sido actualizada visualmente por el método _reiniciar_juego de InterfazAjedrez
+    
+    def volver_menu_principal(self):
+        """
+        Vuelve al menú principal/pantalla de configuración.
+        También reinicia el estado del juego para que esté limpio para la próxima partida.
+        """
+        logger.info("Volviendo al menú principal")
+        
+        # Reiniciar estado del controlador
+        self.casilla_origen_seleccionada = None
+        self.movimientos_validos_cache = []
+        self.juego_terminado = False
+        
+        # Reiniciar el modelo para que esté limpio (igual que en reiniciar_juego)
+        # Esto garantiza que no queden datos residuales cuando se inicie una nueva partida
+        if hasattr(self.modelo, 'reiniciar') and callable(self.modelo.reiniciar):
+            self.modelo.reiniciar()
+        else:
+            # Fallback si no existe el método reiniciar - crear un tablero nuevo
+            self.modelo.tablero = Tablero()
+            logger.warning("No se encontró método para reiniciar el modelo. Creando nuevo tablero.")
+        
+        # Limpiar datos en la vista que dependen del modelo
+        self.vista.jugadores['blanco']['piezas_capturadas'] = []
+        self.vista.jugadores['negro']['piezas_capturadas'] = []
+        
+        # No es necesario reiniciar el modelo aquí ya que se configurará
+        # cuando el usuario seleccione nuevas opciones y presione "Jugar"
+        
+        # La vista ya habrá sido actualizada por _volver_menu_principal de InterfazAjedrez
+    
     def iniciar(self):
         """
         Inicia el bucle principal del juego.
@@ -364,6 +462,44 @@ class ControladorJuego:
         # Comentario: Finaliza Pygame cuando el bucle termina.
         pygame.quit()
         logger.info("Juego finalizado.") # Mantenido en INFO
+
+    # ---------- MÉTODOS DE DESARROLLO (NO USAR EN PRODUCCIÓN) ----------
+    def dev_forzar_fin_juego(self, resultado: str, motivo: str = None):
+        """
+        MÉTODO DE DESARROLLO - Fuerza el fin del juego para probar el popup de fin de juego.
+        
+        Args:
+            resultado: Tipo de resultado ('victoria_blanco', 'victoria_negro', 'tablas')
+            motivo: Motivo del fin de juego ('jaque_mate', 'ahogado', etc.)
+        """
+        logger.warning("⚠️ USANDO MÉTODO DE DESARROLLO PARA FORZAR FIN DE JUEGO")
+        
+        # Crear instancia de KillGame y forzar el fin
+        killer = KillGame(self.modelo)
+        killer.forzar_fin_juego(resultado, motivo)
+        
+        # Actualizar la vista para mostrar el fin de juego
+        self._actualizar_estado_post_movimiento()
+        
+        # Marcar el juego como terminado
+        self.juego_terminado = True
+    
+    def dev_test_victoria_blancas(self):
+        """MÉTODO DE DESARROLLO - Simula victoria de las blancas por jaque mate"""
+        self.dev_forzar_fin_juego('victoria_blanco', 'jaque_mate')
+        
+    def dev_test_victoria_negras(self):
+        """MÉTODO DE DESARROLLO - Simula victoria de las negras por jaque mate"""
+        self.dev_forzar_fin_juego('victoria_negro', 'jaque_mate')
+        
+    def dev_test_tablas_ahogado(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por ahogado"""
+        self.dev_forzar_fin_juego('tablas', 'ahogado')
+        
+    def dev_test_tablas_insuficiente(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por material insuficiente"""
+        self.dev_forzar_fin_juego('tablas', 'material_insuficiente')
+    # ------------------------------------------------------------------
 
 # Código para ejecutar el juego si este script es el principal
 # (Útil para pruebas rápidas)

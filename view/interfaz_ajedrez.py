@@ -33,6 +33,7 @@ class InterfazAjedrez:
         'fondo': (240, 240, 240),
         'borde_tablero': (30, 30, 30),
         'panel_lateral': (200, 200, 200),
+        'overlay': (0, 0, 0, 128),  # Negro semi-transparente para overlay
     }
 
     # Constantes de dimensiones
@@ -43,6 +44,7 @@ class InterfazAjedrez:
         'panel_lateral': 200,  # Ancho de los paneles laterales
         'boton': (100, 30),  # Tamaño de botones
         'dropdown': (450, 30),  # Tamaño de menús desplegables
+        'popup': (400, 300),  # Tamaño del popup de fin de juego
     }
 
     def __init__(self, controlador):
@@ -79,6 +81,15 @@ class InterfazAjedrez:
         self.casilla_origen = None
         self.movimientos_validos = []
         self.casillas_captura = [] # Para guardar las casillas donde se puede capturar una pieza
+        
+        # Estado para el popup de fin de juego
+        self.mostrar_popup_fin_juego = False
+        self.mensaje_fin_juego = ""
+        self.tipo_fin_juego = None  # Puede ser: 'victoria_blanco', 'victoria_negro', 'tablas'
+        
+        # Estado para el botón de desarrollo y su menú
+        self.mostrar_menu_dev = False
+        self.botones_desarrollo = {}
         
         # Estado de los menús desplegables
         self.dropdown_tipo_juego = {
@@ -439,6 +450,13 @@ class InterfazAjedrez:
         
         # Dibujar tablero
         self._dibujar_tablero(tablero)
+        
+        # Dibujar botón de desarrollo
+        self._dibujar_boton_desarrollo()
+        
+        # Dibujar menú de desarrollo si está abierto
+        if self.mostrar_menu_dev:
+            self._dibujar_menu_desarrollo()
     
     def _dibujar_panel_lateral(self, x, jugador):
         """
@@ -901,8 +919,17 @@ class InterfazAjedrez:
             # Eventos para la vista del tablero
             elif self.vista_actual == 'tablero':
                 if evento.type == pygame.MOUSEBUTTONDOWN:
+                    # Si el popup de fin de juego está abierto, manejarlo primero
+                    if self.mostrar_popup_fin_juego:
+                        self._manejar_clic_popup_fin_juego(evento.pos)
+                    # Si el menú de desarrollo está abierto, manejarlo
+                    elif self.mostrar_menu_dev:
+                        self._manejar_clic_menu_desarrollo(evento.pos)
+                    # Verificar clic en el botón de desarrollo
+                    elif self._es_clic_en_boton_desarrollo(evento.pos):
+                        self.mostrar_menu_dev = True
                     # Verificar si se hizo clic en el historial de movimientos
-                    if self._es_clic_en_historial(evento.pos):
+                    elif self._es_clic_en_historial(evento.pos):
                         self._manejar_clic_historial(evento.pos)
                     else:
                         self._manejar_clic_tablero(evento.pos)
@@ -1052,6 +1079,10 @@ class InterfazAjedrez:
             # Actualizar los strings de tiempo ANTES de dibujar
             self._actualizar_display_tiempos()
             self.dibujar_pantalla_tablero(tablero)
+            
+            # Si hay un popup de fin de juego que mostrar, dibujarlo encima
+            if self.mostrar_popup_fin_juego:
+                self._dibujar_popup_fin_juego()
         
         pygame.display.flip()
     
@@ -1093,17 +1124,178 @@ class InterfazAjedrez:
         # Podríamos añadir lógica para que mensajes no persistentes desaparezcan
         # después de un tiempo, pero por ahora se mantienen hasta el siguiente cambio.
     
-    def obtener_configuracion(self):
+    def mostrar_fin_de_juego(self, resultado, motivo=None):
         """
-        Obtiene la configuración seleccionada por el usuario.
+        Muestra el popup de fin de juego con el resultado correspondiente.
         
-        Returns:
-            Dict: Diccionario con la configuración seleccionada.
+        Args:
+            resultado: Tipo de resultado ('victoria_blanco', 'victoria_negro', 'tablas')
+            motivo: Opcional, motivo específico del fin de juego (por ejemplo, 'jaque_mate', 'ahogado', etc.)
         """
-        return {
-            'tipo_juego': self.dropdown_tipo_juego['seleccionado'],
-            'modalidad': self.dropdown_modalidad['seleccionado']
-        } 
+        self.mostrar_popup_fin_juego = True
+        self.tipo_fin_juego = resultado
+        
+        # Detener el temporizador cuando el juego termina
+        self.detener_temporizador()
+        
+        # Determinar el mensaje según el resultado y motivo
+        if resultado == 'victoria_blanco':
+            self.mensaje_fin_juego = f"¡Gana el {self.jugadores['blanco']['nombre']}!"
+        elif resultado == 'victoria_negro':
+            self.mensaje_fin_juego = f"¡Gana el {self.jugadores['negro']['nombre']}!"
+        elif resultado == 'tablas':
+            if motivo == 'ahogado':
+                self.mensaje_fin_juego = "¡Tablas por ahogado!"
+            elif motivo == 'material_insuficiente':
+                self.mensaje_fin_juego = "¡Tablas por material insuficiente!"
+            elif motivo == 'repeticion':
+                self.mensaje_fin_juego = "¡Tablas por repetición!"
+            elif motivo == 'regla_50_movimientos':
+                self.mensaje_fin_juego = "¡Tablas por regla de 50 movimientos!"
+            else:
+                self.mensaje_fin_juego = "¡Tablas!"
+        
+        # Actualizar la pantalla para mostrar el popup inmediatamente
+        self.actualizar(self.controlador.obtener_tablero())
+        
+    def _dibujar_popup_fin_juego(self):
+        """
+        Dibuja el popup de fin de juego con el mensaje de resultado y botones.
+        El tamaño se adapta automáticamente al contenido.
+        """
+        # 1. Dibujar overlay semi-transparente
+        overlay = pygame.Surface(self.DIMENSIONES['ventana'], pygame.SRCALPHA)
+        overlay.fill(self.COLORES['overlay'])
+        self.ventana.blit(overlay, (0, 0))
+        
+        # 2. Calcular tamaños de los elementos para adaptar el popup
+        titulo_texto = self.fuente_subtitulo.render("Final del Juego", True, self.COLORES['negro'])
+        mensaje_texto = self.fuente_titulo.render(self.mensaje_fin_juego, True, self.COLORES['negro'])
+        texto_revancha = self.fuente_normal.render("Revancha", True, self.COLORES['blanco'])
+        texto_menu = self.fuente_normal.render("Menú Principal", True, self.COLORES['negro'])
+        
+        # Calcular ancho mínimo basado en el texto más ancho
+        padding_horizontal = 40  # Padding a cada lado
+        ancho_minimo = 400  # Ancho mínimo por defecto
+        ancho_titulo = titulo_texto.get_width() + padding_horizontal*2
+        ancho_mensaje = mensaje_texto.get_width() + padding_horizontal*2
+        ancho_botones = max(160, texto_revancha.get_width() + 40, texto_menu.get_width() + 40)  # Botones de al menos 160px
+        
+        # El popup debe ser al menos tan ancho como el elemento más ancho
+        popup_ancho = max(ancho_minimo, ancho_titulo, ancho_mensaje, ancho_botones + padding_horizontal*2)
+        
+        # Calcular alto basado en el contenido
+        padding_vertical = 30  # Padding vertical entre elementos
+        padding_mensaje_botones = 60  # Padding adicional entre el mensaje y los botones
+        alto_titulo = titulo_texto.get_height()
+        alto_mensaje = mensaje_texto.get_height()
+        alto_botones = 40 * 2 + 20  # Dos botones de 40px con 20px entre ellos
+        
+        # Calcular alto total con padding adecuado
+        popup_alto = padding_vertical + alto_titulo + padding_vertical + alto_mensaje + padding_vertical + padding_mensaje_botones + alto_botones + padding_vertical
+        
+        # 3. Calcular posición del popup (centrado)
+        ventana_ancho, ventana_alto = self.DIMENSIONES['ventana']
+        popup_x = (ventana_ancho - popup_ancho) // 2
+        popup_y = (ventana_alto - popup_alto) // 2 - 20  # Un poco más arriba del centro exacto
+        
+        # 4. Dibujar fondo del popup
+        popup_rect = pygame.Rect(popup_x, popup_y, popup_ancho, popup_alto)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], popup_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['gris_oscuro'], popup_rect, 2)  # Borde
+        
+        # 5. Dibujar título "Final del Juego"
+        titulo_rect = titulo_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical + alto_titulo // 2))
+        self.ventana.blit(titulo_texto, titulo_rect)
+        
+        # 6. Dibujar mensaje de resultado
+        mensaje_rect = mensaje_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical*2 + alto_titulo + alto_mensaje // 2))
+        self.ventana.blit(mensaje_texto, mensaje_rect)
+        
+        # 7. Dibujar botones
+        # Posición Y para los botones, añadiendo el padding extra
+        botones_y = popup_y + padding_vertical*3 + alto_titulo + alto_mensaje + padding_mensaje_botones
+        
+        # Botón "Revancha"
+        boton_revancha_rect = pygame.Rect(0, 0, ancho_botones, 40)
+        boton_revancha_rect.center = (popup_x + popup_ancho // 2, botones_y)
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], boton_revancha_rect)
+        texto_revancha_rect = texto_revancha.get_rect(center=boton_revancha_rect.center)
+        self.ventana.blit(texto_revancha, texto_revancha_rect)
+        
+        # Botón "Menú Principal"
+        boton_menu_rect = pygame.Rect(0, 0, ancho_botones, 40)
+        boton_menu_rect.center = (popup_x + popup_ancho // 2, botones_y + 60)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], boton_menu_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], boton_menu_rect, 2)  # Borde
+        texto_menu_rect = texto_menu.get_rect(center=boton_menu_rect.center)
+        self.ventana.blit(texto_menu, texto_menu_rect)
+        
+        # Guardar referencias a los rectángulos de los botones para detectar clics
+        self.elementos_ui['popup_fin_juego'] = {
+            'revancha': boton_revancha_rect,
+            'menu_principal': boton_menu_rect
+        }
+    
+    def _manejar_clic_popup_fin_juego(self, pos):
+        """
+        Maneja los clics en los botones del popup de fin de juego.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        if 'popup_fin_juego' not in self.elementos_ui:
+            return
+            
+        # Verificar clic en botón "Revancha"
+        if self.elementos_ui['popup_fin_juego']['revancha'].collidepoint(pos):
+            self._reiniciar_juego()
+            
+        # Verificar clic en botón "Menú Principal"
+        elif self.elementos_ui['popup_fin_juego']['menu_principal'].collidepoint(pos):
+            self._volver_menu_principal()
+    
+    def _reiniciar_juego(self):
+        """
+        Reinicia el juego con la misma configuración.
+        """
+        # Ocultar el popup
+        self.mostrar_popup_fin_juego = False
+        
+        # Limpiar estados de la UI
+        self.pieza_seleccionada = None
+        self.casilla_origen = None
+        self.movimientos_validos = []
+        self.casillas_captura = []
+        self.mensaje_estado = None
+        
+        # Solicitar al controlador reiniciar el juego
+        # El controlador es responsable de actualizar los datos del modelo
+        # y actualizar los datos en la vista (siguiendo patrón MVC)
+        self.controlador.reiniciar_juego()
+        
+        # Reiniciar el temporizador
+        self.iniciar_temporizador()
+    
+    def _volver_menu_principal(self):
+        """
+        Vuelve al menú principal/pantalla de configuración.
+        """
+        # Ocultar el popup
+        self.mostrar_popup_fin_juego = False
+        
+        # Limpiar estados de la UI
+        self.pieza_seleccionada = None
+        self.casilla_origen = None
+        self.movimientos_validos = []
+        self.casillas_captura = []
+        self.mensaje_estado = None
+        
+        # Cambiar a la vista de configuración
+        self.cambiar_vista('configuracion')
+        
+        # Notificar al controlador
+        self.controlador.volver_menu_principal()
 
     def _es_clic_en_historial(self, pos):
         """
@@ -1157,3 +1349,123 @@ class InterfazAjedrez:
         # indice_movimiento = self._calcular_indice_movimiento_desde_pos(pos)
         # if indice_movimiento is not None:
         #     self.controlador.saltar_a_movimiento(indice_movimiento) 
+
+    def _dibujar_boton_desarrollo(self):
+        """
+        Dibuja un botón de desarrollo en la esquina inferior derecha de la pantalla.
+        Este botón permite activar rápidamente diferentes escenarios de fin de juego.
+        """
+        # Definir posición y tamaño del botón
+        ancho, alto = 120, 30
+        x = self.DIMENSIONES['ventana'][0] - ancho - 10  # 10px desde el borde derecho
+        y = self.DIMENSIONES['ventana'][1] - alto - 10   # 10px desde el borde inferior
+        
+        # Dibujar botón (con un color distintivo para desarrollo)
+        boton_rect = pygame.Rect(x, y, ancho, alto)
+        pygame.draw.rect(self.ventana, (255, 100, 100), boton_rect)  # Rojo claro
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], boton_rect, 2)  # Borde negro
+        
+        # Texto del botón
+        texto = self.fuente_normal.render("DEV: FIN JUEGO", True, self.COLORES['negro'])
+        texto_rect = texto.get_rect(center=boton_rect.center)
+        self.ventana.blit(texto, texto_rect)
+        
+        # Guardar referencia al rectángulo para detectar clics
+        self.botones_desarrollo['fin_juego'] = boton_rect
+    
+    def _es_clic_en_boton_desarrollo(self, pos):
+        """
+        Verifica si se hizo clic en el botón de desarrollo.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+            
+        Returns:
+            bool: True si el clic fue en el botón de desarrollo.
+        """
+        return 'fin_juego' in self.botones_desarrollo and self.botones_desarrollo['fin_juego'].collidepoint(pos)
+    
+    def _dibujar_menu_desarrollo(self):
+        """
+        Dibuja un menú con opciones para simular diferentes escenarios de fin de juego.
+        """
+        # Definir posición y tamaño del menú (justo encima del botón de desarrollo)
+        ancho_menu = 180
+        alto_opcion = 30
+        num_opciones = 5
+        alto_menu = alto_opcion * num_opciones + 10  # 5px de padding arriba y abajo
+        
+        x = self.DIMENSIONES['ventana'][0] - ancho_menu - 10  # 10px desde el borde derecho
+        y = self.DIMENSIONES['ventana'][1] - alto_menu - 50   # 10px + altura del botón desde el borde inferior
+        
+        # Dibujar fondo del menú
+        menu_rect = pygame.Rect(x, y, ancho_menu, alto_menu)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], menu_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], menu_rect, 2)  # Borde negro
+        
+        # Opciones del menú
+        opciones = [
+            "Victoria Blancas", 
+            "Victoria Negras", 
+            "Tablas (Ahogado)", 
+            "Tablas (Insuficiente)",
+            "Cerrar Menú"
+        ]
+        
+        # Dibujar cada opción
+        self.botones_desarrollo['opciones'] = []
+        for i, opcion in enumerate(opciones):
+            opcion_y = y + 5 + i * alto_opcion
+            opcion_rect = pygame.Rect(x + 5, opcion_y, ancho_menu - 10, alto_opcion - 5)
+            
+            # Color de fondo diferente para la última opción (Cerrar)
+            if i == len(opciones) - 1:
+                pygame.draw.rect(self.ventana, self.COLORES['gris_claro'], opcion_rect)
+            else:
+                pygame.draw.rect(self.ventana, self.COLORES['blanco'], opcion_rect)
+            
+            # Texto de la opción
+            texto = self.fuente_normal.render(opcion, True, self.COLORES['negro'])
+            texto_rect = texto.get_rect(midleft=(opcion_rect.left + 5, opcion_rect.centery))
+            self.ventana.blit(texto, texto_rect)
+            
+            # Guardar referencia al rectángulo para detectar clics
+            self.botones_desarrollo['opciones'].append((opcion, opcion_rect))
+    
+    def _manejar_clic_menu_desarrollo(self, pos):
+        """
+        Maneja los clics en las opciones del menú de desarrollo.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        # Verificar clic en las opciones del menú
+        if 'opciones' in self.botones_desarrollo:
+            for opcion, rect in self.botones_desarrollo['opciones']:
+                if rect.collidepoint(pos):
+                    self._activar_opcion_desarrollo(opcion)
+                    return
+        
+        # Si se hizo clic fuera del menú, cerrarlo
+        self.mostrar_menu_dev = False
+    
+    def _activar_opcion_desarrollo(self, opcion):
+        """
+        Activa la opción de desarrollo seleccionada.
+        
+        Args:
+            opcion: Texto de la opción seleccionada.
+        """
+        # Cerrar el menú en cualquier caso
+        self.mostrar_menu_dev = False
+        
+        # Activar la opción correspondiente
+        if opcion == "Victoria Blancas":
+            self.controlador.dev_test_victoria_blancas()
+        elif opcion == "Victoria Negras":
+            self.controlador.dev_test_victoria_negras()
+        elif opcion == "Tablas (Ahogado)":
+            self.controlador.dev_test_tablas_ahogado()
+        elif opcion == "Tablas (Insuficiente)":
+            self.controlador.dev_test_tablas_insuficiente()
+        # "Cerrar Menú" no requiere acción adicional 

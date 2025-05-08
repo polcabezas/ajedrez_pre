@@ -100,6 +100,25 @@ class GestorDelHistorico:
 
         return f"{piezas_str} {turno_str} {enroque_str} {al_paso_str}"
 
+    def reiniciar(self):
+        """
+        Reinicia el historial completo, limpiando todas las estructuras de datos.
+        Debe llamarse cuando se reinicia una partida.
+        """
+        # Limpiar el historial de posiciones
+        self.historial_posiciones.clear()
+        
+        # Limpiar historial de notación
+        self.historial_san = []
+        
+        # Limpiar historial completo
+        self.historial_completo = []
+        
+        # Reiniciar contador de movimientos
+        self.numero_movimiento = 1
+        
+        logger.info("Historial reiniciado completamente")
+
     def esTripleRepeticion(self) -> bool:
         """
         Verifica si la posición actual se ha repetido tres veces en la partida.

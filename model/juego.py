@@ -45,6 +45,70 @@ class Juego:
         if not hasattr(self.tablero, 'gestor_historico') or self.tablero.gestor_historico is None:
              self.tablero.gestor_historico = self.historial
     
+    def reiniciar(self):
+        """
+        Reinicia completamente el juego utilizando la configuración existente.
+        Restablece el tablero, historial, piezas capturadas y todos los estados 
+        como si fuera una partida nueva.
+        
+        Returns:
+            bool: True si el reinicio fue exitoso, False en caso contrario.
+        """
+        logger.info("Reiniciando el juego con la configuración existente")
+        
+        if not self.config:
+            logger.error("No hay configuración previa para reiniciar el juego")
+            return False
+            
+        try:
+            # 1. Crear un nuevo tablero (esto borra piezas, posiciones, etc.)
+            self.tablero = Tablero()
+            
+            # 2. Restablecer estado del juego
+            self.estado = "en_curso"
+            self.color_activo = "blanco"
+            self.jugador_actual_idx = 0
+            
+            # 3. Actualizar referencias al tablero en los helpers
+            self.validador.tablero = self.tablero
+            self.ejecutor.tablero = self.tablero
+            self.evaluador.tablero = self.tablero
+            self.historial.tablero = self.tablero
+            
+            # 4. Vincular el nuevo tablero con el gestor de histórico
+            self.tablero.gestor_historico = self.historial
+            
+            # 5. Limpiar historial de movimientos y registrar posición inicial
+            self.historial.reiniciar() # Limpiar todos los históricos (movimientos, posiciones)
+            self.historial.registrar_posicion() # Registrar posición inicial
+            
+            # 6. Limpiar piezas capturadas
+            self.tablero.piezasCapturadas = []
+            
+            # 7. Reiniciar temporizador si existe
+            if self.temporizador:
+                tiempo_base = None
+                tipo_juego = self.config.get('tipo_juego', 'Clásico')
+                
+                if tipo_juego == 'Clásico':
+                    tiempo_base = 600
+                elif tipo_juego == 'Rápido':
+                    tiempo_base = 300
+                elif tipo_juego == 'Blitz':
+                    tiempo_base = 180
+                
+                if tiempo_base:
+                    tiempos = {'blanco': tiempo_base, 'negro': tiempo_base}
+                    self.temporizador.reiniciar(tiempos)
+                    self.temporizador.iniciar_turno(self.color_activo)
+            
+            logger.info("Juego reiniciado exitosamente")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error al reiniciar el juego: {e}", exc_info=True)
+            return False
+    
     def configurar_nueva_partida(self, config: dict):
         """
         Configura el juego para una nueva partida según las opciones dadas.
