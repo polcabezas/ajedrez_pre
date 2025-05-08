@@ -29,6 +29,7 @@ class InterfazAjedrez:
         'casilla_oscura': (150, 150, 150),
         'seleccion': (100, 180, 100, 128),  # Verde semi-transparente
         'movimiento_valido': (100, 100, 180, 128),  # Azul semi-transparente
+        'captura': (220, 80, 80, 128),  # Rojo semi-transparente para capturas
         'fondo': (240, 240, 240),
         'borde_tablero': (30, 30, 30),
         'panel_lateral': (200, 200, 200),
@@ -77,6 +78,7 @@ class InterfazAjedrez:
         self.mensaje_estado = None # Para mostrar mensajes como Jaque, Mate, etc.
         self.casilla_origen = None
         self.movimientos_validos = []
+        self.casillas_captura = [] # Para guardar las casillas donde se puede capturar una pieza
         
         # Estado de los menús desplegables
         self.dropdown_tipo_juego = {
@@ -612,8 +614,12 @@ class InterfazAjedrez:
                     pygame.draw.rect(self.ventana, self.COLORES['seleccion'], 
                                     (x, y, tamaño_casilla, tamaño_casilla))
                 
-                # Resaltar movimientos válidos
-                if (fila, columna) in self.movimientos_validos:
+                # Resaltar casillas de captura (piezas rivales que pueden ser tomadas)
+                elif (fila, columna) in self.casillas_captura:
+                    pygame.draw.rect(self.ventana, self.COLORES['captura'], 
+                                    (x, y, tamaño_casilla, tamaño_casilla))
+                # Resaltar movimientos válidos normales (sin captura)
+                elif (fila, columna) in self.movimientos_validos:
                     pygame.draw.rect(self.ventana, self.COLORES['movimiento_valido'], 
                                     (x, y, tamaño_casilla, tamaño_casilla))
                 

@@ -169,10 +169,27 @@ class ControladorJuego:
                     # Si hay movimientos válidos, seleccionar la pieza
                     self.casilla_origen_seleccionada = casilla
                     self.movimientos_validos_cache = movimientos
+                    
+                    # Identificar cuáles son movimientos de captura (casillas con piezas rivales)
+                    capturas = []
+                    movimientos_sin_captura = []
+                    for mov in movimientos:
+                        # Comprobar si hay una pieza rival en la casilla destino
+                        pieza_destino = tablero.getPieza(mov)
+                        if pieza_destino is not None and pieza_destino.color != pieza.color:
+                            # Es una captura
+                            capturas.append(mov)
+                        else:
+                            # Es un movimiento normal
+                            movimientos_sin_captura.append(mov)
+                            
                     # Actualizar la vista para mostrar resaltados
                     self.vista.casilla_origen = casilla
-                    self.vista.movimientos_validos = movimientos
-                    logger.debug("Pieza %s en %s seleccionada.", pieza, casilla)
+                    self.vista.movimientos_validos = movimientos_sin_captura
+                    self.vista.casillas_captura = capturas
+                    
+                    logger.debug("Pieza %s en %s seleccionada. Movimientos normales: %s, Capturas: %s", 
+                                 pieza, casilla, movimientos_sin_captura, capturas)
                 else:
                     # Pieza propia sin movimientos válidos
                     logger.debug("Pieza %s en %s no tiene movimientos válidos.", pieza, casilla)
@@ -184,10 +201,7 @@ class ControladorJuego:
         
         # === CASO 2: Ya había una pieza seleccionada ===
         else:
-             # Esta lógica se implementará en la Funcionalidad 4 (Realización de Movimientos)
-             logger.debug("Clic en %s mientras %s estaba seleccionada.", casilla, self.casilla_origen_seleccionada)
-             
-             # Verificar si el clic fue en un destino válido
+             # Verificar si el clic fue en un destino válido (movimiento normal o captura)
              if casilla in self.movimientos_validos_cache:
                  # --- Ejecutar Movimiento --- 
                  origen = self.casilla_origen_seleccionada
@@ -237,6 +251,7 @@ class ControladorJuego:
          if self.vista: # Asegurarse de que la vista existe
              self.vista.casilla_origen = None
              self.vista.movimientos_validos = []
+             self.vista.casillas_captura = []
          logger.debug("Selección limpiada.")
 
     def _actualizar_estado_post_movimiento(self):
