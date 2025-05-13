@@ -100,8 +100,16 @@ class InterfazAjedrez:
         
         self.dropdown_modalidad = {
             'abierto': False,
-            'opciones': ['Humano vs Humano', 'Humano vs CPU', 'CPU vs CPU'],
+            'opciones': ['Humano vs Humano', 'Humano vs CPU', 'CPU vs Humano', 'CPU vs CPU'],
             'seleccionado': 'Escoge la modalidad',
+        }
+        
+        # Nuevo dropdown para el nivel de dificultad de la CPU
+        self.dropdown_dificultad_cpu = {
+            'abierto': False,
+            'opciones': ['Nivel 1 (Principiante)', 'Nivel 3 (Intermedio)', 'Nivel 5 (Avanzado)', 'Nivel 10 (Experto)'],
+            'seleccionado': 'Selecciona nivel de dificultad',
+            'visible': False  # Solo visible cuando se selecciona una modalidad con CPU
         }
 
         # Mensaje de error para la pantalla de configuración
@@ -132,23 +140,27 @@ class InterfazAjedrez:
         centro_x = self.DIMENSIONES['ventana'][0] // 2
         
         # Posiciones para la vista de configuración (Ajustadas para mejor espaciado)
-        y_inicial = 150 # Empezar un poco más abajo
-        espacio_grande = 80 # Aumentado de 60 a 80 para más padding
-        espacio_medio = 60
-        espacio_pequeño = 25 # Espacio entre etiqueta y su dropdown
-        espacio_dropdown = 80 # Espacio entre los dos dropdowns completos (label+box)
+        y_inicial = 120  # Reducido para empezar más arriba
+        espacio_grande = 60  # Reducido de 80 a 60
+        espacio_medio = 40   # Reducido de 60 a 40
+        espacio_pequeño = 15  # Reducido de 25 a 15
         
         icono_y = y_inicial
         titulo_y = icono_y + espacio_grande
         subtitulo_y = titulo_y + espacio_medio
         
         tipo_juego_label_y = subtitulo_y + espacio_medio
-        tipo_juego_y = tipo_juego_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2 # Centrar dropdown respecto a su Y
+        tipo_juego_y = tipo_juego_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2
         
         modalidad_label_y = tipo_juego_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_medio
         modalidad_y = modalidad_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2
         
-        boton_jugar_y = modalidad_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_grande
+        # Nueva posición para el dropdown de dificultad de CPU
+        dificultad_cpu_label_y = modalidad_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_medio
+        dificultad_cpu_y = dificultad_cpu_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2
+        
+        # Ajustar posición del botón jugar para que esté debajo del nuevo dropdown
+        boton_jugar_y = dificultad_cpu_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_medio
         
         self.elementos_ui['config'] = {
             'icono_pos': (centro_x, icono_y),
@@ -158,6 +170,8 @@ class InterfazAjedrez:
             'tipo_juego_pos': (centro_x, tipo_juego_y),
             'modalidad_label_pos': (centro_x, modalidad_label_y),
             'modalidad_pos': (centro_x, modalidad_y),
+            'dificultad_cpu_label_pos': (centro_x, dificultad_cpu_label_y),
+            'dificultad_cpu_pos': (centro_x, dificultad_cpu_y),
             'boton_jugar_pos': (centro_x, boton_jugar_y),
         }
         
@@ -309,12 +323,27 @@ class InterfazAjedrez:
         rect_modalidad_label = modalidad_label.get_rect(center=self.elementos_ui['config']['modalidad_label_pos'])
         self.ventana.blit(modalidad_label, rect_modalidad_label)
         
+        # Verificar si debemos mostrar el nivel de dificultad de CPU
+        modalidad_seleccionada = self.dropdown_modalidad['seleccionado']
+        modalidad_tiene_cpu = any(cpu in modalidad_seleccionada for cpu in ["CPU vs", "vs CPU"])
+        
+        # Actualizar visibilidad del dropdown de dificultad CPU
+        self.dropdown_dificultad_cpu['visible'] = modalidad_tiene_cpu
+        
+        # Mostrar etiqueta de dificultad CPU si es visible
+        if self.dropdown_dificultad_cpu['visible']:
+            dificultad_cpu_label = self.fuente_normal.render("Nivel de dificultad CPU", True, self.COLORES['negro'])
+            rect_dificultad_cpu_label = dificultad_cpu_label.get_rect(center=self.elementos_ui['config']['dificultad_cpu_label_pos'])
+            self.ventana.blit(dificultad_cpu_label, rect_dificultad_cpu_label)
+        
         # --- 2. Determinar qué dropdown está abierto --- 
         dropdown_abierto = None
         if self.dropdown_tipo_juego['abierto']:
             dropdown_abierto = 'tipo_juego'
         elif self.dropdown_modalidad['abierto']:
             dropdown_abierto = 'modalidad'
+        elif self.dropdown_dificultad_cpu['abierto']:
+            dropdown_abierto = 'dificultad_cpu'
             
         # --- 3. Dibujar dropdowns cerrados y botón --- 
         # Dibujar el dropdown de tipo de juego si está cerrado o si ningún dropdown está abierto
@@ -324,6 +353,10 @@ class InterfazAjedrez:
         # Dibujar el dropdown de modalidad si está cerrado o si ningún dropdown está abierto
         if dropdown_abierto != 'modalidad':
              self._dibujar_dropdown('modalidad', self.elementos_ui['config']['modalidad_pos'])
+        
+        # Dibujar el dropdown de dificultad CPU si está cerrado, visible y si ningún dropdown está abierto 
+        if dropdown_abierto != 'dificultad_cpu' and self.dropdown_dificultad_cpu['visible']:
+             self._dibujar_dropdown('dificultad_cpu', self.elementos_ui['config']['dificultad_cpu_pos'])
              
         # Dibujar botón Jugar (se dibuja antes del dropdown abierto)
         self._dibujar_boton("Jugar", self.elementos_ui['config']['boton_jugar_pos'], 
@@ -1005,6 +1038,9 @@ class InterfazAjedrez:
         elif self.dropdown_modalidad['abierto']:
             dropdown_abierto_nombre = 'modalidad'
             dropdown_abierto_obj = self.dropdown_modalidad
+        elif self.dropdown_dificultad_cpu['abierto']:
+            dropdown_abierto_nombre = 'dificultad_cpu'
+            dropdown_abierto_obj = self.dropdown_dificultad_cpu
 
         if dropdown_abierto_nombre:
             # Calcular el rectángulo completo del dropdown abierto (cabecera + opciones)
@@ -1033,9 +1069,13 @@ class InterfazAjedrez:
                 datos_boton['accion']()
                 return # El clic ha sido manejado por el botón
         
-        # Verificar clics en las cabeceras de los dropdowns (ambos están cerrados)
+        # Verificar clics en las cabeceras de los dropdowns (todos están cerrados)
         self._verificar_clic_dropdown('tipo_juego', pos) 
-        self._verificar_clic_dropdown('modalidad', pos) # Ahora es seguro verificar ambos
+        self._verificar_clic_dropdown('modalidad', pos)
+        
+        # Solo verificar el dropdown de dificultad CPU si es visible
+        if self.dropdown_dificultad_cpu['visible']:
+            self._verificar_clic_dropdown('dificultad_cpu', pos)
     
     def _verificar_clic_dropdown(self, nombre, pos):
         """
@@ -1043,10 +1083,15 @@ class InterfazAjedrez:
         y maneja el evento.
         
         Args:
-            nombre: Nombre del menú ('tipo_juego' o 'modalidad').
+            nombre: Nombre del menú ('tipo_juego', 'modalidad' o 'dificultad_cpu').
             pos: Posición (x, y) del clic.
         """
         dropdown = getattr(self, f'dropdown_{nombre}')
+        
+        # Si es el dropdown de dificultad CPU y no está visible, ignorar
+        if nombre == 'dificultad_cpu' and not dropdown['visible']:
+            return
+            
         ancho, alto = self.DIMENSIONES['dropdown']
         centro_x, centro_y = self.elementos_ui['config'][f'{nombre}_pos']
         
@@ -1059,11 +1104,12 @@ class InterfazAjedrez:
         if rect_cabecera.collidepoint(pos):
             # Alternar estado abierto/cerrado
             dropdown['abierto'] = not dropdown['abierto']
-            # Si se acaba de abrir este, cerrar el otro
+            # Si se acaba de abrir este, cerrar los otros
             if dropdown['abierto']:
-                otro_nombre = 'modalidad' if nombre == 'tipo_juego' else 'tipo_juego'
-                otro_dropdown = getattr(self, f'dropdown_{otro_nombre}')
-                otro_dropdown['abierto'] = False
+                for otro_nombre in ['tipo_juego', 'modalidad', 'dificultad_cpu']:
+                    if otro_nombre != nombre:
+                        otro_dropdown = getattr(self, f'dropdown_{otro_nombre}')
+                        otro_dropdown['abierto'] = False
             return # Clic manejado
         
         # Si el menú está abierto, verificar clic en las opciones
@@ -1074,8 +1120,12 @@ class InterfazAjedrez:
                 if rect_opcion.collidepoint(pos):
                     dropdown['seleccionado'] = opcion
                     dropdown['abierto'] = False # Cerrar al seleccionar
-                    # Aquí podrías llamar a una función del controlador si la selección debe tener efecto inmediato
-                    # self.controlador.actualizar_configuracion(nombre, opcion)
+                    
+                    # Si cambia la modalidad, actualizar la visibilidad del dropdown de dificultad CPU
+                    if nombre == 'modalidad':
+                        modalidad_tiene_cpu = any(cpu in opcion for cpu in ["CPU vs", "vs CPU"])
+                        self.dropdown_dificultad_cpu['visible'] = modalidad_tiene_cpu
+                    
                     return # Clic manejado
             
             # Si el clic fue dentro del área abierta pero no en una opción ni en la cabecera,
@@ -1158,20 +1208,38 @@ class InterfazAjedrez:
         # Valores por defecto de los dropdowns
         tipo_juego_default = 'Escoge el tipo de juego'
         modalidad_default = 'Escoge la modalidad'
+        dificultad_cpu_default = 'Selecciona nivel de dificultad'
         
-        # Verificar si ambos dropdowns tienen selecciones válidas
+        # Verificar si los dropdowns requeridos tienen selecciones válidas
         tipo_juego_seleccionado = self.dropdown_tipo_juego['seleccionado']
         modalidad_seleccionada = self.dropdown_modalidad['seleccionado']
         
-        # Si alguno tiene el valor por defecto, retornar None
+        # Si alguno de los principales tiene el valor por defecto, retornar None
         if tipo_juego_seleccionado == tipo_juego_default or modalidad_seleccionada == modalidad_default:
             return None
+            
+        # Verificar si se necesita el nivel de dificultad de CPU
+        if any(cpu in modalidad_seleccionada for cpu in ["CPU vs", "vs CPU"]):
+            dificultad_cpu_seleccionada = self.dropdown_dificultad_cpu['seleccionado']
+            if dificultad_cpu_seleccionada == dificultad_cpu_default:
+                return None  # Si se requiere nivel CPU pero no se ha seleccionado
+                
+            # Extraer el número de nivel de la selección (e.g., "Nivel 3 (Intermedio)" -> 3)
+            nivel_cpu = int(dificultad_cpu_seleccionada.split()[1].split('(')[0])
+        else:
+            nivel_cpu = None  # No se necesita nivel CPU para Humano vs Humano
         
-        # Si ambos tienen valores válidos, retornar la configuración
-        return {
+        # Crear y retornar el diccionario de configuración
+        config = {
             'tipo_juego': tipo_juego_seleccionado,
             'modalidad': modalidad_seleccionada
         }
+        
+        # Añadir nivel de CPU si es aplicable
+        if nivel_cpu is not None:
+            config['nivel_cpu'] = nivel_cpu
+            
+        return config
 
     def mostrar_mensaje_estado(self, texto: Optional[str]):
         """

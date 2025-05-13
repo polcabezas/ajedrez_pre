@@ -55,22 +55,25 @@ class JugadorCPU(Jugador):
         self._nivel = nivel
         self.engine: Optional[chess.engine.SimpleEngine] = None # Inicializar como None
         self.motor_path = motor_path
+        self.modo_fallback = False  # Indica si se está usando el algoritmo simple de fallback
 
         # --- Inicialización del motor de ajedrez ---
         try:
+            # Intentar inicializar el motor de ajedrez
             self.engine = chess.engine.SimpleEngine.popen_uci(self.motor_path)
             logger.info(f"Motor de ajedrez UCI inicializado desde: {self.motor_path}")
         except FileNotFoundError:
-            logger.error(f"Error: No se encontró el motor de ajedrez en la ruta especificada: '{self.motor_path}'. "
-                         f"Asegúrate de que Stockfish (u otro motor UCI) esté instalado y en el PATH, "
-                         f"o proporciona la ruta correcta al inicializar JugadorCPU.")
-            # El motor seguirá siendo None, solicitarMovimiento fallará elegantemente.
+            self.modo_fallback = True
+            logger.warning(f"No se encontró el motor de ajedrez en la ruta '{self.motor_path}'. "
+                         f"Se usará un algoritmo simple para los movimientos del CPU.")
         except Exception as e:
-            logger.exception(f"Se produjo un error inesperado al inicializar el motor de ajedrez desde '{self.motor_path}': {e}")
-            # Dejar el motor como None.
+            self.modo_fallback = True
+            logger.warning(f"No se pudo inicializar el motor de ajedrez: {e}. "
+                         f"Se usará un algoritmo simple para los movimientos del CPU.")
         # --- Fin inicialización ---
 
-        logger.info(f"Jugador CPU '{self.get_nombre()}' (Color: {self.get_color()}, Nivel: {self._nivel}) inicializado.")
+        nombre_modo = "algoritmo simple" if self.modo_fallback else f"motor UCI ({self.motor_path})"
+        logger.info(f"Jugador CPU '{self.get_nombre()}' (Color: {self.get_color()}, Nivel: {self._nivel}) inicializado usando {nombre_modo}.")
 
     def get_nivel(self) -> int:
         """
@@ -157,6 +160,7 @@ class JugadorCPU(Jugador):
     def solicitarMovimiento(self, juego: 'Juego') -> MoveInfo:
         """
         Determina y devuelve el próximo movimiento de la CPU utilizando el motor de ajedrez.
+        Si el motor no está disponible, usa un algoritmo simple para generar un movimiento aleatorio.
 
         Convierte el estado actual del juego al formato `python-chess`, consulta al motor
         por el mejor movimiento según el nivel de dificultad, y convierte el resultado
@@ -167,22 +171,22 @@ class JugadorCPU(Jugador):
 
         Returns:
             MoveInfo: Tupla ((fila_origen, col_origen), (fila_destino, col_destino)).
-                      Devuelve ((-1,-1),(-1,-1)) si el motor no está disponible,
-                      no puede encontrar un movimiento (fin de partida), o si ocurre un error.
+                      Devuelve ((-1,-1),(-1,-1)) si no puede encontrar un movimiento (fin de partida),
+                      o si ocurre un error y no hay movimientos disponibles.
         """
-        # Verificar si el motor está disponible
-        if self.engine is None:
-            logger.error(f"JugadorCPU '{self.get_nombre()}' no puede solicitar movimiento: el motor de ajedrez no está inicializado.")
-            return ((-1,-1), (-1,-1)) # Indicar error o incapacidad de mover
-
         # Verificar acceso al tablero
         if not hasattr(juego, 'tablero') or juego.tablero is None:
              logger.error(f"JugadorCPU '{self.get_nombre()}' no puede acceder al tablero desde el objeto Juego.")
              # Considerar lanzar excepción o devolver movimiento inválido
              return ((-1,-1), (-1,-1)) # Devolver movimiento inválido
 
-        tablero_interno: 'Tablero' = juego.tablero
+        tablero_interno = juego.tablero
         color_actual_str = self.get_color() # 'blanco' o 'negro'
+
+        # Si el motor no está disponible, usar la lógica de fallback
+        if self.engine is None:
+            logger.warning(f"Motor de ajedrez no disponible. Usando algoritmo simple para jugador CPU '{self.get_nombre()}'.")
+            return self._generar_movimiento_simple(tablero_interno)
 
         # Convertir el tablero interno a formato python-chess
         try:
@@ -195,10 +199,10 @@ class JugadorCPU(Jugador):
 
         except ValueError as e:
              logger.error(f"Error al convertir el tablero para {color_actual_str}: {e}")
-             return ((-1,-1), (-1,-1))
+             return self._generar_movimiento_simple(tablero_interno)  # Usar movimiento simple como fallback
         except Exception as e:
              logger.exception(f"Error inesperado durante la conversión del tablero para {color_actual_str}: {e}")
-             return ((-1,-1), (-1,-1))
+             return self._generar_movimiento_simple(tablero_interno)  # Usar movimiento simple como fallback
 
         # Calcular el mejor movimiento con el motor
         tiempo_limite = 0.1 * self._nivel # Tiempo en segundos (ajustar según sea necesario)
@@ -216,7 +220,7 @@ class JugadorCPU(Jugador):
             if resultado.move is None:
                 # Esto puede ocurrir en jaque mate o tablas.
                 logger.warning(f"El motor no devolvió ningún movimiento para {color_actual_str} (Posible fin de partida). FEN: {board.fen()}")
-                return ((-1,-1), (-1,-1)) # Indicar que no hay movimiento legal
+                return self._generar_movimiento_simple(tablero_interno)  # Intentar con movimiento simple
 
             # Convertir el movimiento resultante de vuelta a nuestro formato
             movimiento_motor: chess.Move = resultado.move
@@ -242,13 +246,56 @@ class JugadorCPU(Jugador):
         except chess.engine.EngineTerminatedError:
              logger.error(f"El motor de ajedrez terminó inesperadamente para {color_actual_str}.")
              self.engine = None # Marcar el motor como no disponible
-             return ((-1,-1), (-1,-1))
+             return self._generar_movimiento_simple(tablero_interno)  # Usar movimiento simple como fallback
         except chess.engine.EngineError as e:
              logger.error(f"Error del motor de ajedrez para {color_actual_str}: {e}. FEN: {board.fen()}")
-             return ((-1,-1), (-1,-1))
+             return self._generar_movimiento_simple(tablero_interno)  # Usar movimiento simple como fallback
         except Exception as e:
              logger.exception(f"Error inesperado al solicitar movimiento del motor para {color_actual_str}: {e}")
-             return ((-1,-1), (-1,-1))
+             return self._generar_movimiento_simple(tablero_interno)  # Usar movimiento simple como fallback
+             
+    def _generar_movimiento_simple(self, tablero):
+        """
+        Algoritmo simple para generar un movimiento válido cuando el motor de ajedrez no está disponible.
+        Selecciona una pieza aleatoria que pertenezca al jugador y un movimiento aleatorio válido.
+        
+        Args:
+            tablero: El tablero actual del juego.
+            
+        Returns:
+            MoveInfo: Tupla con las coordenadas de origen y destino del movimiento,
+                    o ((-1,-1),(-1,-1)) si no hay movimiento posible.
+        """
+        try:
+            import random
+            
+            # Obtener todas las piezas del color del jugador CPU
+            piezas_propias = []
+            for fila in range(8):
+                for columna in range(8):
+                    pieza = tablero.getPieza((fila, columna))
+                    if pieza and pieza.get_color() == self.get_color():
+                        piezas_propias.append(((fila, columna), pieza))
+            
+            # Barajar la lista para seleccionar aleatoriamente
+            random.shuffle(piezas_propias)
+            
+            # Encontrar la primera pieza que tenga movimientos válidos
+            for posicion, pieza in piezas_propias:
+                if hasattr(pieza, 'obtener_movimientos_legales') and callable(pieza.obtener_movimientos_legales):
+                    movimientos = pieza.obtener_movimientos_legales()
+                    if movimientos:
+                        # Seleccionar un movimiento aleatorio
+                        destino = random.choice(movimientos)
+                        logger.info(f"JugadorCPU '{self.get_nombre()}' ({self.get_color()}) generó movimiento simple: {posicion} -> {destino}")
+                        return (posicion, destino)
+            
+            logger.warning(f"No se encontró ningún movimiento válido para JugadorCPU '{self.get_nombre()}' ({self.get_color()})")
+            return ((-1,-1), (-1,-1))  # No hay movimiento posible
+            
+        except Exception as e:
+            logger.exception(f"Error al generar movimiento simple: {e}")
+            return ((-1,-1), (-1,-1))  # Error, devolver movimiento inválido
 
     # --- Limpieza ---
     def __del__(self):

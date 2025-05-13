@@ -116,7 +116,7 @@ class Juego:
 
         Args:
             config: Diccionario con las opciones, ej:
-                    {'tipo_juego': 'Clásico', 'modalidad': 'Humano vs Humano'}
+                    {'tipo_juego': 'Clásico', 'modalidad': 'Humano vs Humano', 'nivel_cpu': 3}
         """
         logger.info("Configurando nueva partida con: %s", config)
         self.config = config
@@ -141,6 +141,7 @@ class Juego:
         
         # 4. Configurar Jugadores
         modalidad = config.get('modalidad', 'Humano vs Humano')
+        nivel_cpu = config.get('nivel_cpu', 1)  # Nivel por defecto si no se especifica
         self.jugadores = [] 
         try:
             if modalidad == 'Humano vs Humano':
@@ -148,18 +149,18 @@ class Juego:
                 self.jugadores.append(JugadorHumano(nombre="Jugador 2", color='negro'))
             elif modalidad == 'Humano vs CPU':
                 self.jugadores.append(JugadorHumano(nombre="Humano", color='blanco'))
-                self.jugadores.append(JugadorCPU(nombre="CPU", color='negro'))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU Nivel {nivel_cpu}", color='negro', nivel=nivel_cpu))
             elif modalidad == 'CPU vs Humano':
-                self.jugadores.append(JugadorCPU(nombre="CPU 1", color='blanco'))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU Nivel {nivel_cpu}", color='blanco', nivel=nivel_cpu))
                 self.jugadores.append(JugadorHumano(nombre="Humano", color='negro'))
             elif modalidad == 'CPU vs CPU':
-                self.jugadores.append(JugadorCPU(nombre="CPU 1", color='blanco'))
-                self.jugadores.append(JugadorCPU(nombre="CPU 2", color='negro'))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU 1 Nivel {nivel_cpu}", color='blanco', nivel=nivel_cpu))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU 2 Nivel {nivel_cpu}", color='negro', nivel=nivel_cpu))
             else:
                  logger.warning(f"Modalidad '{modalidad}' no reconocida, usando Humano vs Humano.")
                  self.jugadores.append(JugadorHumano(nombre="Jugador 1", color='blanco'))
                  self.jugadores.append(JugadorHumano(nombre="Jugador 2", color='negro'))
-            logger.info(f"Jugadores configurados para modalidad: {modalidad}")
+            logger.info(f"Jugadores configurados para modalidad: {modalidad}, nivel CPU: {nivel_cpu if 'CPU' in modalidad else 'N/A'}")
         except NameError as ne:
             logger.error(f"ERROR: Clase JugadorHumano o JugadorCPU no encontrada: {ne}.")
             self.jugadores = []

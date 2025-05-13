@@ -25,6 +25,7 @@ sys.path.append(project_root)
 from model.juego import Juego
 from model.piezas.pieza import Pieza
 from model.tablero import Tablero
+from model.jugadores.jugador_cpu import JugadorCPU
 from view.interfaz_ajedrez import InterfazAjedrez
 
 # Importar KillGame para uso en desarrollo
@@ -148,8 +149,14 @@ class ControladorJuego:
         self.vista.movimientos_validos = []
         
         # Forzar una actualización inmediata para mostrar el tablero limpio
-        # Pasamos el tablero recién inicializado/reseteado
-        # self.vista.actualizar(self.obtener_tablero()) # El bucle principal se encargará
+        self.vista.actualizar(self.obtener_tablero())
+        
+        # AÑADIDO: Verificar si el jugador inicial es CPU y programar su movimiento
+        if len(self.modelo.jugadores) >= 2:
+            jugador_inicial = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+            if isinstance(jugador_inicial, JugadorCPU):
+                logger.info("Programando movimiento inicial para jugador CPU")
+                self.tiempo_movimiento_cpu = pygame.time.get_ticks() + 1000  # 1 segundo de delay inicial
 
     def manejar_clic_casilla(self, casilla: Tuple[int, int]):
         """
@@ -267,9 +274,8 @@ class ControladorJuego:
 
     def _actualizar_estado_post_movimiento(self):
         """
-        Llamado después de que un movimiento se realiza con éxito en el modelo.
-        Consulta el estado actualizado del juego (turno, jaque, mate, tablas) 
-        y actualiza la vista si es necesario.
+        Comprueba el estado del juego después de un movimiento y
+        actualiza la interfaz según corresponda.
         """
         logger.debug("Controlador: Actualizando estado post-movimiento.")
         
@@ -303,6 +309,9 @@ class ControladorJuego:
                     tipos_capturados = [type(p).__name__ for p in piezas_capturadas_negro]
                     logger.debug(f"Actualizadas piezas capturadas del jugador negro: {len(piezas_capturadas_negro)} piezas: {tipos_capturados}")
             
+            # Verificar el estado del juego
+            self.juego_terminado = estado_juego in ['jaque_mate', 'tablas', 'ahogado']
+            
             # Actualizar mensaje de estado del juego si es necesario
             if estado_juego == 'jaque':
                 self.vista.mostrar_mensaje_estado(f"Jaque al Rey {nuevo_turno}")
@@ -323,14 +332,31 @@ class ControladorJuego:
                 self.mostrar_popup_fin_juego('tablas', 'ahogado')
             else:
                 self.vista.mostrar_mensaje_estado(None) # Limpiar mensaje si no hay estado especial
-                
+            
             # Actualizar tablero
             tablero_actual = self.obtener_tablero()
             self.vista.actualizar(tablero_actual)
             
+            # 3. Programar próximo movimiento CPU si corresponde
+            if not self.juego_terminado:
+                # Verificar si el próximo jugador es CPU
+                if len(self.modelo.jugadores) >= 2:
+                    jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+                    if isinstance(jugador_actual, JugadorCPU):
+                        # Programar procesamiento de movimiento CPU con un pequeño delay
+                        # para que la interfaz tenga tiempo de actualizarse
+                        # Usar un delay más largo para CPU vs CPU para que sea más visible
+                        if all(isinstance(j, JugadorCPU) for j in self.modelo.jugadores):
+                            delay = 1000  # 1 segundo para CPU vs CPU
+                        else:
+                            delay = 500   # 0.5 segundos para Humano vs CPU
+                        
+                        self.tiempo_movimiento_cpu = pygame.time.get_ticks() + delay
+                        logger.info(f"Programando movimiento CPU para {jugador_actual.get_nombre()} en {delay}ms")
+            
         except Exception as e:
             logger.error(f"Excepción en _actualizar_estado_post_movimiento: {e}", exc_info=True)
-            
+
     def mostrar_popup_fin_juego(self, resultado, motivo=None):
         """
         Muestra el popup de fin de juego con el resultado correspondiente.
@@ -423,55 +449,137 @@ class ControladorJuego:
     def iniciar(self):
         """
         Inicia el bucle principal del juego.
-        Maneja eventos y actualiza la vista hasta que el usuario cierre la aplicación.
         """
+        # Marcar que el controlador está ejecutándose
         self.running = True
         
-        # Comentario: El bucle principal del juego.
+        # Variable para controlar tiempo del próximo movimiento CPU
+        self.tiempo_movimiento_cpu = None
+        
+        # Bucle principal del juego
+        reloj = pygame.time.Clock()
+        
+        # Iniciar el bucle
         while self.running:
-            # --- Usar logging en lugar de print --- 
-            logger.debug("Inicio de iteración del bucle principal.")
-            
-            # Comentario: Procesa eventos de Pygame (input de usuario, cierre, etc.)
-            # El método de la vista devuelve False si se detecta el evento QUIT.
-            try:
-                logger.debug("Llamando a vista.manejar_eventos()...")
-                eventos_ok = self.vista.manejar_eventos() 
-                logger.debug(f"vista.manejar_eventos() devolvió: {eventos_ok}")
-                if not eventos_ok:
-                    self.running = False
-                    logger.info("manejador_eventos indicó salir.")
-                    continue # Salir del bucle si manejar_eventos devuelve False
-            except Exception as e:
-                logger.error(f"Excepción en vista.manejar_eventos(): {e}")
-                self.running = False # Salir en caso de error
-                continue
+            # --- Procesar eventos de pygame ---
+            if not self.vista.manejar_eventos():
+                # Si manejar_eventos devuelve False, salir del bucle
+                self.running = False
+                break
                 
-            # Comentario: Actualiza y redibuja la pantalla. 
-            # Le pasamos el tablero si estamos en la vista de tablero, None si no.
-            tablero_actual = None
-            if self.vista.vista_actual == 'tablero': 
-                 tablero_actual = self.obtener_tablero() 
-                 
-            try:
-                logger.debug("Llamando a vista.actualizar()...")
-                self.vista.actualizar(tablero_actual)
-                logger.debug("vista.actualizar() completado.")
-            except Exception as e:
-                logger.error(f"Excepción en vista.actualizar(): {e}")
-                import traceback
-                traceback.print_exc() # Imprimir traceback completo
-                self.running = False # Salir en caso de error
-                continue
+            # --- Procesar lógica del juego ---
+            tiempo_actual = pygame.time.get_ticks()
             
-            # Comentario: Pequeña pausa para evitar consumir 100% CPU.
-            pygame.time.wait(30) # 30 ms de espera
-            logger.debug("Fin de iteración del bucle principal.")
-            # --- FIN Logging ---
-
-        # Comentario: Finaliza Pygame cuando el bucle termina.
+            # Verificar si es tiempo de realizar un movimiento de CPU
+            if self.tiempo_movimiento_cpu and tiempo_actual >= self.tiempo_movimiento_cpu:
+                movimiento_realizado = self.procesar_movimiento_cpu()
+                self.tiempo_movimiento_cpu = None  # Resetear el tiempo de movimiento
+                
+                # Si se realizó un movimiento, forzar actualización de vista
+                if movimiento_realizado:
+                    self.vista.actualizar(self.obtener_tablero())
+            
+            # --- Actualizar vista ---
+            # Pasar el tablero a la vista para que lo dibuje
+            self.vista.actualizar(self.obtener_tablero())
+            
+            # Limitar fps
+            reloj.tick(30)
+        
+        # Salir limpiamente
         pygame.quit()
-        logger.info("Juego finalizado.") # Mantenido en INFO
+        sys.exit()
+
+    # --- Métodos para manejar las jugadas del CPU ---
+    def procesar_movimiento_cpu(self):
+        """
+        Solicita y procesa un movimiento del jugador CPU actual si es su turno.
+        Este método debe ser llamado periódicamente en el bucle principal cuando
+        el turno corresponde a un jugador CPU.
+        
+        Returns:
+            bool: True si un movimiento CPU fue procesado, False si no corresponde o hubo error.
+        """
+        if self.juego_terminado:
+            return False
+            
+        # Obtener el jugador actual
+        if not self.modelo.jugadores or len(self.modelo.jugadores) < 2:
+            logger.error("No hay suficientes jugadores configurados para procesar movimiento CPU")
+            return False
+            
+        jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+        turno_color = self.modelo.getTurnoColor()
+        
+        # Verificar si el jugador actual es una CPU
+        if not isinstance(jugador_actual, JugadorCPU):
+            # No es CPU, nada que hacer
+            return False
+            
+        # Verificar que el color del jugador coincida con el turno actual
+        if jugador_actual.get_color() != turno_color:
+            logger.error(f"Error: Color del jugador CPU ({jugador_actual.get_color()}) "
+                         f"no coincide con el turno actual ({turno_color})")
+            return False
+            
+        logger.info(f"Solicitando movimiento a jugador CPU {jugador_actual.get_nombre()}")
+        
+        try:
+            # Solicitar movimiento al jugador CPU
+            origen, destino = jugador_actual.solicitarMovimiento(self.modelo)
+            
+            # Verificar si el movimiento es válido ((-1,-1),(-1,-1) indica error/fin de juego)
+            if origen == (-1,-1) or destino == (-1,-1):
+                logger.error(f"El jugador CPU {jugador_actual.get_nombre()} no pudo generar un movimiento válido")
+                return False
+                
+            # Ejecutar el movimiento
+            logger.info(f"Ejecutando movimiento CPU: {origen} -> {destino}")
+            if hasattr(self.modelo, 'realizar_movimiento') and callable(self.modelo.realizar_movimiento):
+                resultado = self.modelo.realizar_movimiento(origen, destino)
+                
+                # Actualizar el estado del juego después del movimiento
+                self._actualizar_estado_post_movimiento()
+                
+                # IMPORTANTE: No programar aquí el próximo movimiento CPU,
+                # ya que eso se hace en _actualizar_estado_post_movimiento
+                # y podría interferir con el flujo normal del juego.
+                
+                return True
+            else:
+                logger.error("El modelo no tiene un método 'realizar_movimiento' válido")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error al procesar movimiento CPU: {e}")
+            return False
+            
+    def _manejar_fin_juego(self, estado):
+        """
+        Maneja el fin del juego, mostrando el mensaje apropiado según el estado.
+        
+        Args:
+            estado: Estado del juego ('jaque_mate', 'tablas', 'ahogado', etc.)
+        """
+        color_perdedor = self.modelo.getTurnoColor()  # El color del jugador que no puede mover
+        color_ganador = 'negro' if color_perdedor == 'blanco' else 'blanco'
+        
+        if estado == 'jaque_mate':
+            mensaje = f"¡Jaque Mate! Ganan las {color_ganador}s."
+            self.vista.mostrar_fin_de_juego(f"victoria_{color_ganador}", f"¡Jaque Mate! El rey {color_perdedor} no puede escapar.")
+        elif estado == 'ahogado':
+            mensaje = f"¡Tablas por ahogado! El rey {color_perdedor} no puede moverse pero no está en jaque."
+            self.vista.mostrar_fin_de_juego('tablas', mensaje)
+        elif estado == 'tablas':
+            # Obtener el motivo de tablas (regla 50 movimientos, repetición, material insuficiente)
+            motivo = self.modelo.getMotivoTablas() if hasattr(self.modelo, 'getMotivoTablas') else "Tablas"
+            self.vista.mostrar_fin_de_juego('tablas', motivo)
+        else:
+            logger.warning(f"Estado de fin de juego desconocido: {estado}")
+            self.vista.mostrar_fin_de_juego('tablas', f"Fin de partida: {estado}")
+            
+        # Asegurarse de que se detenga el temporizador
+        self.vista.detener_temporizador()
 
     # ---------- MÉTODOS DE DESARROLLO (NO USAR EN PRODUCCIÓN) ----------
     def dev_forzar_fin_juego(self, resultado: str, motivo: str = None):
