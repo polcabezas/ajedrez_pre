@@ -161,14 +161,16 @@ class ControladorJuego:
     def manejar_clic_casilla(self, casilla: Tuple[int, int]):
         """
         Gestiona la lógica principal cuando el usuario hace clic en una casilla del tablero.
-        Incluye la selección de piezas y la ejecución de movimientos.
-
-        Args:
-            casilla: Tupla (fila, columna) de la casilla clickeada.
         """
         logger.debug("Controlador: Clic en casilla %s", casilla)
         if self.juego_terminado:
             logger.debug("Juego terminado, ignorando clic.")
+            return
+
+        # Verificar si el jugador actual es una CPU
+        jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+        if isinstance(jugador_actual, JugadorCPU):
+            logger.info("Turno de CPU, ignorando clic.")
             return
 
         # Obtener estado necesario
