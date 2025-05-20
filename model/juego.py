@@ -27,7 +27,7 @@ class Juego:
         La configuración específica se aplica con configurar_nueva_partida.
         """
         self.tablero: Tablero = Tablero() # Crear tablero inicial
-        self.jugadores: List[JugadorHumano] = []
+        self.jugadores: List[JugadorHumano | JugadorCPU] = []
         self.jugador_actual_idx: int = 0
         self.estado: Literal['inicio', 'en_curso', 'jaque', 'jaque_mate', 'tablas', 'ahogado'] = "inicio"
         self.color_activo: Optional[Literal['blanco', 'negro']] = None
@@ -153,13 +153,9 @@ class Juego:
             elif modalidad == 'CPU vs Humano':
                 self.jugadores.append(JugadorCPU(nombre=f"CPU Nivel {nivel_cpu}", color='blanco', nivel=nivel_cpu))
                 self.jugadores.append(JugadorHumano(nombre="Humano", color='negro'))
-            elif modalidad == 'CPU vs CPU':
+            else:
                 self.jugadores.append(JugadorCPU(nombre=f"CPU 1 Nivel {nivel_cpu}", color='blanco', nivel=nivel_cpu))
                 self.jugadores.append(JugadorCPU(nombre=f"CPU 2 Nivel {nivel_cpu}", color='negro', nivel=nivel_cpu))
-            else:
-                 logger.warning(f"Modalidad '{modalidad}' no reconocida, usando Humano vs Humano.")
-                 self.jugadores.append(JugadorHumano(nombre="Jugador 1", color='blanco'))
-                 self.jugadores.append(JugadorHumano(nombre="Jugador 2", color='negro'))
             logger.info(f"Jugadores configurados para modalidad: {modalidad}, nivel CPU: {nivel_cpu if 'CPU' in modalidad else 'N/A'}")
         except NameError as ne:
             logger.error(f"ERROR: Clase JugadorHumano o JugadorCPU no encontrada: {ne}.")

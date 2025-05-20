@@ -987,6 +987,12 @@ class InterfazAjedrez:
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 return False
+            elif evento.type == pygame.USEREVENT + 1:
+                # Este es nuestro evento de respaldo para CPU
+                if self.controlador and hasattr(self.controlador, 'tiempo_movimiento_cpu'):
+                    # Solo procesar si aún está programado
+                    if self.controlador.tiempo_movimiento_cpu is not None:
+                        self.controlador.tiempo_movimiento_cpu = pygame.time.get_ticks()
             
             # Eventos para la vista de configuración
             if self.vista_actual == 'configuracion':

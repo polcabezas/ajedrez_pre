@@ -351,7 +351,7 @@ class ControladorJuego:
                         if all(isinstance(j, JugadorCPU) for j in self.modelo.jugadores):
                             delay = 1000  # 1 segundo para CPU vs CPU
                         else:
-                            delay = 500   # 0.5 segundos para Humano vs CPU
+                            delay = 1000   # 1 segundos para Humano vs CPU
                         
                         self.tiempo_movimiento_cpu = pygame.time.get_ticks() + delay
                         logger.info(f"Programando movimiento CPU para {jugador_actual.get_nombre()} en {delay}ms")
@@ -474,8 +474,10 @@ class ControladorJuego:
             
             # Verificar si es tiempo de realizar un movimiento de CPU
             if self.tiempo_movimiento_cpu and tiempo_actual >= self.tiempo_movimiento_cpu:
+                # Resetear inmediatamente para evitar problemas de timing
+                self.tiempo_movimiento_cpu = None
+                
                 movimiento_realizado = self.procesar_movimiento_cpu()
-                self.tiempo_movimiento_cpu = None  # Resetear el tiempo de movimiento
                 
                 # Si se realizó un movimiento, forzar actualización de vista
                 if movimiento_realizado:
@@ -485,8 +487,8 @@ class ControladorJuego:
             # Pasar el tablero a la vista para que lo dibuje
             self.vista.actualizar(self.obtener_tablero())
             
-            # Limitar fps
-            reloj.tick(30)
+            # Limitar fps 
+            reloj.tick(60)  # 60 FPS para mejor respuesta
         
         # Salir limpiamente
         pygame.quit()
@@ -512,6 +514,15 @@ class ControladorJuego:
             
         jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
         turno_color = self.modelo.getTurnoColor()
+        
+        # Verificar que el jugador actual coincida con el turno actual
+        if jugador_actual.get_color() != turno_color:
+            # Try to find the correct player based on color
+            for i, jugador in enumerate(self.modelo.jugadores):
+                if jugador.get_color() == turno_color:
+                    self.modelo.jugador_actual_idx = i
+                    jugador_actual = jugador
+                    break
         
         # Verificar si el jugador actual es una CPU
         if not isinstance(jugador_actual, JugadorCPU):
