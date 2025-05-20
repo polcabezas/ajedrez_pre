@@ -32,7 +32,7 @@ class JugadorCPU(Jugador):
 
     # Mapa de símbolos propios a tipos de pieza de python-chess
     _SIMBOLO_A_TIPO_PIEZA = {
-        'P': chess.PAWN,
+        'P': chess.PAWN,   # Peón
         'N': chess.KNIGHT, # Caballo
         'B': chess.BISHOP, # Alfil
         'R': chess.ROOK,   # Torre
