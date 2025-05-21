@@ -24,6 +24,7 @@ sys.path.append(project_root)
 
 from model.juego import Juego
 from model.piezas.pieza import Pieza
+from model.piezas.rey import Rey
 from model.tablero import Tablero
 from model.jugadores.jugador_cpu import JugadorCPU
 from view.interfaz_ajedrez import InterfazAjedrez
@@ -193,23 +194,36 @@ class ControladorJuego:
                     # Identificar cuáles son movimientos de captura (casillas con piezas rivales)
                     capturas = []
                     movimientos_sin_captura = []
-                    for mov in movimientos:
-                        # Comprobar si hay una pieza rival en la casilla destino
-                        pieza_destino = tablero.getPieza(mov)
-                        if pieza_destino is not None and pieza_destino.color != pieza.color:
-                            # Es una captura
-                            capturas.append(mov)
-                        else:
-                            # Es un movimiento normal
-                            movimientos_sin_captura.append(mov)
+                    enroques_disponibles = [] # Nueva lista para destinos de enroque del rey
+
+                    if isinstance(pieza, Rey):
+                        # Para el rey, los movimientos a 2 casillas de distancia horizontal son enroques
+                        col_origen = casilla[1]
+                        for mov in movimientos:
+                            if abs(col_origen - mov[1]) == 2:
+                                enroques_disponibles.append(mov)
+                            else:
+                                pieza_destino = tablero.getPieza(mov)
+                                if pieza_destino is not None and pieza_destino.color != pieza.color:
+                                    capturas.append(mov)
+                                else:
+                                    movimientos_sin_captura.append(mov)
+                    else:
+                        for mov in movimientos:
+                            pieza_destino = tablero.getPieza(mov)
+                            if pieza_destino is not None and pieza_destino.color != pieza.color:
+                                capturas.append(mov)
+                            else:
+                                movimientos_sin_captura.append(mov)
                             
                     # Actualizar la vista para mostrar resaltados
                     self.vista.casilla_origen = casilla
                     self.vista.movimientos_validos = movimientos_sin_captura
                     self.vista.casillas_captura = capturas
+                    self.vista.casillas_enroque_disponible = enroques_disponibles # Pasar a la vista
                     
-                    logger.debug("Pieza %s en %s seleccionada. Movimientos normales: %s, Capturas: %s", 
-                                 pieza, casilla, movimientos_sin_captura, capturas)
+                    logger.debug("Pieza %s en %s seleccionada. Movs normales: %s, Capturas: %s, Enroques: %s", 
+                                 pieza, casilla, movimientos_sin_captura, capturas, enroques_disponibles)
                 else:
                     # Pieza propia sin movimientos válidos
                     logger.debug("Pieza %s en %s no tiene movimientos válidos.", pieza, casilla)
@@ -272,6 +286,7 @@ class ControladorJuego:
              self.vista.casilla_origen = None
              self.vista.movimientos_validos = []
              self.vista.casillas_captura = []
+             self.vista.casillas_enroque_disponible = [] # Asegurarse de limpiar aquí también
          logger.debug("Selección limpiada.")
 
     def _actualizar_estado_post_movimiento(self):

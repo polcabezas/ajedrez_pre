@@ -30,6 +30,7 @@ class InterfazAjedrez:
         'seleccion': (100, 180, 100, 128),  # Verde semi-transparente
         'movimiento_valido': (100, 100, 180, 128),  # Azul semi-transparente
         'captura': (220, 80, 80, 128),  # Rojo semi-transparente para capturas
+        'enroque_disponible': (255, 255, 0, 128), # Amarillo semi-transparente para enroque
         'fondo': (240, 240, 240),
         'borde_tablero': (30, 30, 30),
         'panel_lateral': (200, 200, 200),
@@ -81,6 +82,7 @@ class InterfazAjedrez:
         self.casilla_origen = None
         self.movimientos_validos = []
         self.casillas_captura = [] # Para guardar las casillas donde se puede capturar una pieza
+        self.casillas_enroque_disponible = [] # Para resaltar el destino del rey en enroque
         
         # Estado para el popup de fin de juego
         self.mostrar_popup_fin_juego = False
@@ -844,6 +846,11 @@ class InterfazAjedrez:
                     pygame.draw.rect(self.ventana, self.COLORES['seleccion'], 
                                     (x, y, tamaño_casilla, tamaño_casilla))
                 
+                # Resaltar casillas de enroque disponible (amarillo)
+                elif (fila, columna) in self.casillas_enroque_disponible:
+                    pygame.draw.rect(self.ventana, self.COLORES['enroque_disponible'],
+                                     (x, y, tamaño_casilla, tamaño_casilla))
+
                 # Resaltar casillas de captura (piezas rivales que pueden ser tomadas)
                 elif (fila, columna) in self.casillas_captura:
                     pygame.draw.rect(self.ventana, self.COLORES['captura'], 
@@ -1399,6 +1406,7 @@ class InterfazAjedrez:
         self.casilla_origen = None
         self.movimientos_validos = []
         self.casillas_captura = []
+        self.casillas_enroque_disponible = []
         self.mensaje_estado = None
         
         # Solicitar al controlador reiniciar el juego
@@ -1421,6 +1429,7 @@ class InterfazAjedrez:
         self.casilla_origen = None
         self.movimientos_validos = []
         self.casillas_captura = []
+        self.casillas_enroque_disponible = []
         self.mensaje_estado = None
         
         # Cambiar a la vista de configuración

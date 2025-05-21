@@ -7,6 +7,7 @@ from model.temporizador import Temporizador
 from model.jugadores.jugador_humano import JugadorHumano
 from model.jugadores.jugador_cpu import JugadorCPU
 from model.configuracion_juego import ConfiguracionJuego
+from model.piezas.rey import Rey
 import logging
 from .validador_movimiento import ValidadorMovimiento
 from .ejecutor_movimiento import EjecutorMovimiento
@@ -211,14 +212,25 @@ class Juego:
         """
         logger.debug(f"Ejecutando movimiento: {origen} -> {destino} por {self.color_activo}")
         color_jugador_actual = self.color_activo
+        pieza_movida = self.tablero.getPieza(origen) # Obtener la pieza antes de la ejecución
 
         try:
-            # 1. Ejecutar el movimiento usando el Ejecutor
-            # El ejecutor se encarga de: mover pieza, captura, actualizar tablero (enroque, ep, contadores), 
-            # cambiar turno, llamar a actualizarEstadoJuego y registrar posición en historial.
-            # ASUNCIÓN: Por ahora, solo manejamos movimientos normales aquí.
-            # TODO: Determinar cómo se maneja el enroque (¿llamada separada o detectada por ejecutor?)
-            resultado_ejecucion = self.ejecutor.ejecutar_movimiento_normal(origen, destino)
+            # 1. Determinar si es un movimiento de enroque
+            if isinstance(pieza_movida, Rey) and abs(origen[1] - destino[1]) == 2:
+                # Es un intento de enroque
+                tipo_enroque = 'corto' if destino[1] > origen[1] else 'largo'
+                logger.info(f"Detectado intento de enroque {tipo_enroque} para {color_jugador_actual}")
+                # La validación de si el enroque es legal ya debería haber ocurrido
+                # antes de llamar a realizar_movimiento (ej. en el controlador al obtener movimientos legales).
+                # El ejecutor_enroque también tiene sus propias comprobaciones internas.
+                exito_enroque = self.ejecutor.ejecutar_enroque(color_jugador_actual, tipo_enroque)
+                if not exito_enroque:
+                    logger.error(f"Ejecutor.ejecutar_enroque devolvió error para enroque {tipo_enroque} de {color_jugador_actual}")
+                    return 'error'
+                resultado_ejecucion = 'ok' # Si ejecutar_enroque fue exitoso, se considera 'ok'
+            else:
+                # No es enroque, ejecutar movimiento normal
+                resultado_ejecucion = self.ejecutor.ejecutar_movimiento_normal(origen, destino)
 
             if resultado_ejecucion == 'error':
                 logger.error(f"Ejecutor devolvió error para movimiento {origen}->{destino}")
