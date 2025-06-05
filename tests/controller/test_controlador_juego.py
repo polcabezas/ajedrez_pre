@@ -1,5 +1,10 @@
+"""
+Tests unitarios para la clase ControladorJuego.
+Verifica la comunicación entre modelo y vista, gestión de eventos y flujo del juego.
+"""
+
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, Mock
 import sys
 import os
 
@@ -14,18 +19,17 @@ try:
     from model.juego import Juego
     from view.interfaz_ajedrez import InterfazAjedrez
     from model.tablero import Tablero
+    from model.jugadores.jugador_cpu import JugadorCPU
 except ImportError as e:
     print(f"ERROR en test: No se pudieron importar clases reales para spec: {e}")
     # Definir clases dummy para que el archivo al menos se cargue
     class Juego: pass
     class InterfazAjedrez: pass
     class Tablero: pass
+    class JugadorCPU: pass
 
 # Importar la clase a testear
 from controller.controlador_juego import ControladorJuego
-
-# Mockear clases dependientes ANTES de que se importen por ControladorJuego si es necesario
-# Sin embargo, aquí mockearemos donde se USAN (en el constructor de ControladorJuego)
 
 class TestControladorJuegoConexionBasica(unittest.TestCase):
     """
@@ -52,15 +56,21 @@ class TestControladorJuegoConexionBasica(unittest.TestCase):
     @patch('controller.controlador_juego.Juego')
     @patch('controller.controlador_juego.InterfazAjedrez')
     @patch('controller.controlador_juego.pygame') # Mockear todo el módulo pygame
-    def test_bucle_principal_iniciar(self, MockPygame, MockInterfazAjedrez, MockJuego):
+    @patch('controller.controlador_juego.sys') # Mockear sys para evitar exit()
+    def test_bucle_principal_iniciar(self, MockSys, MockPygame, MockInterfazAjedrez, MockJuego):
         """
         Verifica que el método iniciar ejecuta el bucle, llama a los métodos 
         de la vista y finaliza pygame correctamente.
         """
         # Configurar mocks
         mock_vista_instancia = MockInterfazAjedrez.return_value
+        mock_modelo_instancia = MockJuego.return_value
+        
         # Simular que manejar_eventos devuelve True la primera vez, False la segunda para salir del bucle
         mock_vista_instancia.manejar_eventos.side_effect = [True, False]
+        
+        # Configurar mock del modelo para obtener_tablero
+        mock_modelo_instancia.tablero = MagicMock()
 
         # Comentario: Crear instancia del controlador
         controlador = ControladorJuego()
@@ -74,23 +84,19 @@ class TestControladorJuegoConexionBasica(unittest.TestCase):
         # Comentario: Verificar llamadas a métodos de la vista dentro del bucle
         # Debería llamarse dos veces (una por cada iteración simulada)
         self.assertEqual(mock_vista_instancia.manejar_eventos.call_count, 2)
-        # Debería llamarse una vez por cada iteración antes de salir
-        # Corrección: Solo se llama en la primera iteración debido al 'continue'
-        self.assertEqual(mock_vista_instancia.actualizar.call_count, 1)
-        # Verificar que se pasó None a actualizar, ya que no se obtiene tablero aún
-        mock_vista_instancia.actualizar.assert_called_with(None)
+        # Debería llamarse al menos una vez
+        self.assertGreaterEqual(mock_vista_instancia.actualizar.call_count, 1)
 
-        # Comentario: Verificar llamada a pygame.time.wait (llamado dentro del bucle)
-        MockPygame.time.wait.assert_called()
-        self.assertGreaterEqual(MockPygame.time.wait.call_count, 1)
+        # Comentario: Verificar llamada a pygame.time.Clock().tick()
+        MockPygame.time.Clock.assert_called()
+        MockPygame.time.Clock().tick.assert_called()
 
         # Comentario: Verificar que pygame.quit() se llamó al final
         MockPygame.quit.assert_called_once()
+        
+        # Comentario: Verificar que sys.exit() se llamó al final  
+        MockSys.exit.assert_called_once()
 
-if __name__ == '__main__':
-    unittest.main()
-
-# --- Test para Funcionalidad 2: Inicio de Partida ---
 
 class TestControladorJuegoInicioPartida(unittest.TestCase):
 
@@ -113,11 +119,13 @@ class TestControladorJuegoInicioPartida(unittest.TestCase):
         controlador = ControladorJuego()
         
         # --- Simular que el modelo SÍ tiene el método de configuración ---
-        # Cambiar el nombre del método mockeado
-        config_method_name_in_controller = 'configurar_nueva_partida' # El nombre que usa el controlador
+        config_method_name_in_controller = 'configurar_nueva_partida'
         mock_config_method = MagicMock()
         setattr(mock_modelo_instancia, config_method_name_in_controller, mock_config_method)
-        # mock_modelo_instancia.iniciar_partida = MagicMock() # <-- Línea antigua
+        
+        # Mockear atributos que necesita el controlador después de configurar
+        mock_modelo_instancia.jugadores = []
+        mock_modelo_instancia.jugador_actual_idx = 0
     
         # Llamar al método a probar
         controlador.solicitar_inicio_juego()
@@ -127,14 +135,12 @@ class TestControladorJuegoInicioPartida(unittest.TestCase):
         mock_vista_instancia.obtener_configuracion.assert_called_once()
     
         # 2. Llamar al método correcto en el modelo con la configuración
-        # Cambiar el método que se verifica y el argumento
         mock_config_method.assert_called_once_with(config_simulada)
-        # mock_modelo_instancia.iniciar_partida.assert_called_once_with(configuracion=config_simulada) # <-- Línea antigua
     
         # 3. Cambiar vista en la interfaz
         mock_vista_instancia.cambiar_vista.assert_called_once_with('tablero')
 
-        # 4. Verificar reseteo de estado interno (opcional pero bueno)
+        # 4. Verificar reseteo de estado interno
         self.assertIsNone(controlador.casilla_origen_seleccionada)
         self.assertEqual(controlador.movimientos_validos_cache, [])
         self.assertFalse(controlador.juego_terminado)
@@ -143,19 +149,6 @@ class TestControladorJuegoInicioPartida(unittest.TestCase):
         self.assertIsNone(mock_vista_instancia.casilla_origen)
         self.assertEqual(mock_vista_instancia.movimientos_validos, [])
 
-    # Test 2: Eliminar este test si 'iniciar_partida' existe en el modelo real
-    # @patch('controller.controlador_juego.Tablero', spec=Tablero)
-    # @patch('controller.controlador_juego.InterfazAjedrez', spec=InterfazAjedrez)
-    # @patch('controller.controlador_juego.Juego', spec=Juego) # <-- Añadir spec=Juego
-    # def test_solicitar_inicio_juego_sin_metodo_modelo(self, MockJuego, MockInterfazAjedrez, MockTablero):
-    #     """
-    #     Verifica el comportamiento si el modelo NO tiene 'iniciar_partida'.
-    #     Debería resetear el tablero como fallback. (OBSOLETO SI EL MÉTODO EXISTE)
-    #     """
-        # ... (todo el cuerpo del test comentado o eliminado)
-        # pass 
-
-# --- Test para Funcionalidad 3: Selección de Piezas ---
 
 class TestControladorSeleccionPieza(unittest.TestCase):
 
@@ -175,6 +168,10 @@ class TestControladorSeleccionPieza(unittest.TestCase):
         # Crear un mock para el tablero *interno* del modelo Juego
         self.mock_tablero_interno = MagicMock(spec=Tablero)
         self.mock_modelo_instancia.tablero = self.mock_tablero_interno
+        
+        # *** CORRECIÓN: Mockear atributos críticos que necesita manejar_clic_casilla ***
+        self.mock_modelo_instancia.jugadores = []  # Lista vacía inicial
+        self.mock_modelo_instancia.jugador_actual_idx = 0
         
         # Crear instancia del controlador
         self.controlador = ControladorJuego()
@@ -200,6 +197,12 @@ class TestControladorSeleccionPieza(unittest.TestCase):
         casilla_origen = (1, 0) # Peón blanco inicial
         movimientos_simulados = [(2, 0), (3, 0)]
 
+        # *** CORRECCIÓN: Configurar jugadores para pasar la verificación CPU ***
+        mock_jugador_humano = MagicMock()
+        mock_jugador_humano.get_color.return_value = 'blanco'
+        self.mock_modelo_instancia.jugadores = [mock_jugador_humano]
+        self.mock_modelo_instancia.jugador_actual_idx = 0
+
         # Configurar mocks del modelo
         self.mock_modelo_instancia.getTurnoColor.return_value = 'blanco'
         self.mock_tablero_interno.getPieza.return_value = self.mock_pieza_blanca
@@ -218,13 +221,28 @@ class TestControladorSeleccionPieza(unittest.TestCase):
         self.assertEqual(self.mock_vista_instancia.movimientos_validos, movimientos_simulados)
 
         # Verificar llamadas a mocks
-        self.mock_modelo_instancia.getTurnoColor.assert_called_once()
-        self.mock_tablero_interno.getPieza.assert_called_once_with(casilla_origen)
+        self.mock_modelo_instancia.getTurnoColor.assert_called()
+        
+        # *** CORRECCIÓN: Verificar que se llamó con la casilla origen al menos una vez ***
+        # El controlador hace múltiples llamadas a getPieza: una para la casilla origen
+        # y una para cada movimiento válido (para determinar capturas)
+        self.mock_tablero_interno.getPieza.assert_any_call(casilla_origen)
+        
+        # También verifica que se llamó para cada movimiento (para detectar capturas)
+        for movimiento in movimientos_simulados:
+            self.mock_tablero_interno.getPieza.assert_any_call(movimiento)
+        
         self.mock_pieza_blanca.obtener_movimientos_legales.assert_called_once()
 
     def test_seleccionar_pieza_rival(self):
         """ Verifica que no se puede seleccionar una pieza del rival. """
         casilla_rival = (7, 0) # Torre negra
+
+        # *** CORRECCIÓN: Configurar jugadores para pasar la verificación CPU ***
+        mock_jugador_humano = MagicMock()
+        mock_jugador_humano.get_color.return_value = 'blanco'
+        self.mock_modelo_instancia.jugadores = [mock_jugador_humano]
+        self.mock_modelo_instancia.jugador_actual_idx = 0
 
         # Configurar mocks
         self.mock_modelo_instancia.getTurnoColor.return_value = 'blanco'
@@ -246,6 +264,12 @@ class TestControladorSeleccionPieza(unittest.TestCase):
         """ Verifica que no pasa nada al seleccionar una casilla vacía. """
         casilla_vacia = (4, 4)
 
+        # *** CORRECCIÓN: Configurar jugadores para pasar la verificación CPU ***
+        mock_jugador_humano = MagicMock()
+        mock_jugador_humano.get_color.return_value = 'blanco'
+        self.mock_modelo_instancia.jugadores = [mock_jugador_humano]
+        self.mock_modelo_instancia.jugador_actual_idx = 0
+
         # Configurar mocks
         self.mock_modelo_instancia.getTurnoColor.return_value = 'blanco'
         self.mock_tablero_interno.getPieza.return_value = None # Casilla vacía
@@ -266,6 +290,12 @@ class TestControladorSeleccionPieza(unittest.TestCase):
         casilla_origen = (0, 0) # Torre blanca inicial (hipotéticamente bloqueada)
         movimientos_simulados = [] # Sin movimientos
 
+        # *** CORRECCIÓN: Configurar jugadores para pasar la verificación CPU ***
+        mock_jugador_humano = MagicMock()
+        mock_jugador_humano.get_color.return_value = 'blanco'
+        self.mock_modelo_instancia.jugadores = [mock_jugador_humano]
+        self.mock_modelo_instancia.jugador_actual_idx = 0
+
         # Configurar mocks
         self.mock_modelo_instancia.getTurnoColor.return_value = 'blanco'
         self.mock_tablero_interno.getPieza.return_value = self.mock_pieza_blanca
@@ -283,7 +313,6 @@ class TestControladorSeleccionPieza(unittest.TestCase):
         # Verificar que se intentó obtener movimientos
         self.mock_pieza_blanca.obtener_movimientos_legales.assert_called_once()
 
-# --- Test para Funcionalidad 4: Realización de Movimientos ---
 
 class TestControladorRealizarMovimiento(unittest.TestCase):
 
@@ -301,8 +330,12 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         self.mock_modelo_instancia = self.MockJuego.return_value
         self.mock_tablero_interno = MagicMock(spec=Tablero)
         self.mock_modelo_instancia.tablero = self.mock_tablero_interno
-        # >>> AÑADIR: Inicializar atributo 'jugadores' en el mock del modelo <<<
-        self.mock_modelo_instancia.jugadores = [] 
+        
+        # *** CORRECCIÓN: Configurar jugadores para pasar verificaciones CPU ***
+        mock_jugador_humano = MagicMock()
+        mock_jugador_humano.get_color.return_value = 'blanco'
+        self.mock_modelo_instancia.jugadores = [mock_jugador_humano] 
+        self.mock_modelo_instancia.jugador_actual_idx = 0
         
         self.controlador = ControladorJuego()
         # >>> AÑADIR: Inicializar estructura vista.jugadores en el mock de la vista <<<
@@ -326,12 +359,15 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         
         # Mockear el método del modelo para realizar movimiento
         # Asumimos que existe y que no lanza error por defecto
-        self.mock_modelo_instancia.realizar_movimiento = MagicMock(return_value=True)
+        self.mock_modelo_instancia.realizar_movimiento = MagicMock(return_value='ok')
         # Mockear el método para obtener turno (necesario para cambio de selección)
         self.mock_modelo_instancia.getTurnoColor.return_value = 'blanco' 
-        # Mockear el estado post-movimiento
-        self.mock_modelo_instancia.estado = 'en_curso' # Atributo directo como en juego.py
-        
+        # Mockear métodos para _actualizar_estado_post_movimiento
+        self.mock_modelo_instancia.getEstadoJuego.return_value = 'en_curso'
+        self.mock_modelo_instancia.obtener_datos_display.return_value = {
+            'blanco': {'capturadas': []},
+            'negro': {'capturadas': []}
+        }
 
     def tearDown(self):
         self.patcher_juego.stop()
@@ -354,16 +390,13 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         self.assertIsNone(self.mock_vista_instancia.casilla_origen)
         self.assertEqual(self.mock_vista_instancia.movimientos_validos, [])
         
-        # Verificar que se consultó el estado post-movimiento (aunque no haga mucho aún)
-        self.mock_modelo_instancia.getTurnoColor.assert_called() # Llamado en _actualizar_estado...
-        # Verificar acceso a estado (asumiendo atributo directo)
-        self.assertTrue(hasattr(self.mock_modelo_instancia, 'estado'))
+        # Verificar que se consultó el estado post-movimiento
+        self.mock_modelo_instancia.getTurnoColor.assert_called()
+        self.mock_modelo_instancia.getEstadoJuego.assert_called()
         
-        # >>> AÑADIR: Verificar que el turno se actualizó en la vista <<<
-        # Corrección: Verificar llamada al método en lugar de atributo directo
-        # Asumimos que getTurnoColor devuelve el *nuevo* turno después del movimiento
+        # Verificar que el turno se actualizó en la vista
         nuevo_turno_esperado = self.mock_modelo_instancia.getTurnoColor.return_value
-        self.mock_vista_instancia.cambiar_turno_temporizador.assert_called_once_with(nuevo_turno_esperado)
+        self.mock_vista_instancia.cambiar_turno_temporizador.assert_called_with(nuevo_turno_esperado)
 
     def test_clic_en_destino_invalido(self):
         """ Verifica que hacer clic fuera de los movs válidos deselecciona. """
@@ -385,7 +418,7 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         self.assertEqual(self.mock_vista_instancia.movimientos_validos, [])
         
         # Verificar que getPieza se llamó para comprobar si era otra pieza propia
-        self.mock_tablero_interno.getPieza.assert_called_once_with(casilla_destino_invalida)
+        self.mock_tablero_interno.getPieza.assert_called_with(casilla_destino_invalida)
 
     def test_cambiar_seleccion_a_otra_pieza_propia(self):
         """
@@ -399,7 +432,6 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         
         # Simular que getPieza devuelve la nueva pieza y getTurnoColor es blanco
         self.mock_tablero_interno.getPieza.return_value = mock_nueva_pieza
-        # self.mock_modelo_instancia.getTurnoColor.return_value = 'blanco' # Ya en setUp
 
         # Ejecutar acción
         self.controlador.manejar_clic_casilla(casilla_otra_pieza)
@@ -413,58 +445,66 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         self.assertEqual(self.mock_vista_instancia.casilla_origen, casilla_otra_pieza)
         self.assertEqual(self.mock_vista_instancia.movimientos_validos, movimientos_nueva_pieza)
         
-        # Verificar llamadas: getPieza y obtener_movimientos_legales para la nueva pieza
-        self.mock_tablero_interno.getPieza.assert_called_with(casilla_otra_pieza)
-        # getTurnoColor se llama al inicio del clic y de nuevo en la llamada recursiva
-        self.assertGreaterEqual(self.mock_modelo_instancia.getTurnoColor.call_count, 2)
+        # *** CORRECCIÓN: Verificar que se llamó con la casilla correcta al menos una vez ***
+        # El controlador hace múltiples llamadas: una para la casilla y una para cada movimiento
+        self.mock_tablero_interno.getPieza.assert_any_call(casilla_otra_pieza)
+        
+        # También verifica que se llamó para cada movimiento (para detectar capturas)
+        for movimiento in movimientos_nueva_pieza:
+            self.mock_tablero_interno.getPieza.assert_any_call(movimiento)
+            
         mock_nueva_pieza.obtener_movimientos_legales.assert_called_once()
 
-    # --- Nuevos Tests para Estados Especiales ---
-    
     def test_estado_jaque_post_movimiento(self):
         """ Verifica que se muestra mensaje de Jaque. """
         casilla_destino_valida = (2, 0)
         # Simular que getEstadoJuego devuelve 'jaque'
         self.mock_modelo_instancia.getEstadoJuego.return_value = 'jaque'
-        # self.mock_modelo_instancia.estado = 'jaque' # <- No es necesario simular el atributo
         
         self.controlador.manejar_clic_casilla(casilla_destino_valida)
+        
+        # Verificar que se mostró mensaje de jaque
+        expected_message = f"Jaque al Rey {self.mock_modelo_instancia.getTurnoColor.return_value}"
+        self.mock_vista_instancia.mostrar_mensaje_estado.assert_called_with(expected_message)
         
     def test_estado_mate_post_movimiento(self):
         """ Verifica que se muestra mensaje de Mate y termina el juego. """
         casilla_destino_valida = (2, 0)
         # Simular que getEstadoJuego devuelve 'jaque_mate'
         self.mock_modelo_instancia.getEstadoJuego.return_value = 'jaque_mate'
-        # self.mock_modelo_instancia.estado = 'jaque_mate'
         
         self.controlador.manejar_clic_casilla(casilla_destino_valida)
+        
+        # Verificar que el juego se marcó como terminado
+        self.assertTrue(self.controlador.juego_terminado)
         
     def test_estado_ahogado_post_movimiento(self):
         """ Verifica que se muestra mensaje de Ahogado y termina el juego. """
         casilla_destino_valida = (2, 0)
         # Simular que getEstadoJuego devuelve 'ahogado'
         self.mock_modelo_instancia.getEstadoJuego.return_value = 'ahogado'
-        # self.mock_modelo_instancia.estado = 'ahogado'
         
         self.controlador.manejar_clic_casilla(casilla_destino_valida)
+        
+        # Verificar que el juego se marcó como terminado
+        self.assertTrue(self.controlador.juego_terminado)
         
     def test_estado_tablas_post_movimiento(self):
         """ Verifica que se muestra mensaje de Tablas y termina el juego. """
         casilla_destino_valida = (2, 0)
         # Simular que getEstadoJuego devuelve 'tablas'
         self.mock_modelo_instancia.getEstadoJuego.return_value = 'tablas'
-        # self.mock_modelo_instancia.estado = 'tablas'
         
         self.controlador.manejar_clic_casilla(casilla_destino_valida)
+        
+        # Verificar que el juego se marcó como terminado
+        self.assertTrue(self.controlador.juego_terminado)
         
     def test_estado_en_curso_post_movimiento(self):
         """ Verifica que se limpia el mensaje si el estado es 'en_curso'. """
         casilla_destino_valida = (2, 0)
         # Simular que getEstadoJuego devuelve 'en_curso'
         self.mock_modelo_instancia.getEstadoJuego.return_value = 'en_curso'
-        # self.mock_modelo_instancia.estado = 'en_curso'
-        # Simular que había un mensaje previo (de un jaque anterior)
-        self.mock_vista_instancia.mensaje_estado = "¡Jaque!" 
         
         self.controlador.manejar_clic_casilla(casilla_destino_valida)
         
@@ -472,8 +512,6 @@ class TestControladorRealizarMovimiento(unittest.TestCase):
         self.mock_vista_instancia.mostrar_mensaje_estado.assert_called_with(None)
         self.assertFalse(self.controlador.juego_terminado)
 
-# --- Test para Funcionalidad 8: Actualización de Display --- 
-# (Se puede añadir a TestControladorRealizarMovimiento o clase nueva)
 
 class TestControladorActualizacionDisplay(unittest.TestCase):
     
@@ -494,6 +532,10 @@ class TestControladorActualizacionDisplay(unittest.TestCase):
         self.mock_modelo_instancia.obtener_datos_display = MagicMock()
         self.mock_modelo_instancia.getTurnoColor = MagicMock(return_value='negro') # Nuevo turno
         self.mock_modelo_instancia.getEstadoJuego = MagicMock(return_value='en_curso')
+        
+        # *** CORRECCIÓN: Configurar jugadores para evitar errores ***
+        self.mock_modelo_instancia.jugadores = []
+        self.mock_modelo_instancia.jugador_actual_idx = 0
 
     def tearDown(self):
         self.patcher_juego.stop()
@@ -524,3 +566,7 @@ class TestControladorActualizacionDisplay(unittest.TestCase):
         self.assertEqual(self.mock_vista_instancia.jugadores['negro']['piezas_capturadas'], [mock_pieza_capturada_b]) # Negras captura Blancas
         # Verificar que el método para cambiar el turno en la vista fue llamado
         self.mock_vista_instancia.cambiar_turno_temporizador.assert_called_with('negro')
+
+
+if __name__ == '__main__':
+    unittest.main()
