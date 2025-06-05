@@ -538,7 +538,7 @@ class InterfazAjedrez:
         self._dibujar_tablero(tablero)
         
         # Dibujar botón de desarrollo
-        self._dibujar_boton_desarrollo()
+        #self._dibujar_boton_desarrollo() #TODO: Descomentar cuando se quiera usar el botón de desarrollo
         
         # Dibujar menú de desarrollo si está abierto
         if self.mostrar_menu_dev:
