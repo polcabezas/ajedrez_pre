@@ -144,6 +144,11 @@ class ControladorJuego:
         self.casilla_origen_seleccionada = None
         self.movimientos_validos_cache = []
         self.juego_terminado = False 
+        
+        # Estado para gestión de promoción de peón
+        self.promocion_en_proceso = False
+        self.casilla_promocion = None  # Casilla donde está el peón que se promoverá
+        self.origen_promocion = None   # Casilla de origen del movimiento de promoción 
 
         # Limpiar la selección visual en la vista por si acaso
         self.vista.casilla_origen = None
@@ -245,14 +250,13 @@ class ControladorJuego:
                  # Este método debe actualizar el tablero y el turno internamente.
                  # Reemplaza 'realizar_movimiento' si se llama diferente en tu clase Juego.
                  exito_movimiento = False
+                 resultado_movimiento = None
                  try:
                      if hasattr(self.modelo, 'realizar_movimiento') and callable(self.modelo.realizar_movimiento):
                          # Idealmente, este método devuelve algo útil (True/False, estado, etc.)
-                         resultado = self.modelo.realizar_movimiento(origen, casilla)
-                         # Asumimos éxito si no hay excepción por ahora
-                         # Podríamos necesitar ajustar esto según lo que devuelva tu método real
+                         resultado_movimiento = self.modelo.realizar_movimiento(origen, casilla)
                          exito_movimiento = True 
-                         logger.debug("Modelo realizó movimiento. Resultado: %s", resultado)
+                         logger.debug("Modelo realizó movimiento. Resultado: %s", resultado_movimiento)
                      else:
                          logger.error("ERROR: El modelo Juego no tiene el método 'realizar_movimiento'")
                  except Exception as e:
@@ -260,8 +264,14 @@ class ControladorJuego:
                      # Podríamos querer no limpiar la selección si el movimiento falla en el modelo
 
                  if exito_movimiento:
-                     self._limpiar_seleccion_vista() # Limpia selección interna y visual
-                     self._actualizar_estado_post_movimiento() # Comprueba estado (jaque, mate, etc.)
+                     # Verificar si el resultado indica que se necesita promoción
+                     if resultado_movimiento == 'promocion_requerida':
+                         # Promoción de peón detectada
+                         self._iniciar_promocion_peon(origen, casilla)
+                     else:
+                         # Movimiento normal completado
+                         self._limpiar_seleccion_vista() # Limpia selección interna y visual
+                         self._actualizar_estado_post_movimiento() # Comprueba estado (jaque, mate, etc.)
                  # else: # Si el movimiento falla en el modelo, ¿qué hacer? ¿Mantener selección? 
                      # Por ahora, asumimos que si estaba en movs_validos, el modelo debe aceptarlo
                      # o lanzar una excepción que capturamos.
@@ -373,6 +383,83 @@ class ControladorJuego:
             
         except Exception as e:
             logger.error(f"Excepción en _actualizar_estado_post_movimiento: {e}", exc_info=True)
+    
+    def _iniciar_promocion_peon(self, origen, destino):
+        """
+        Inicia el proceso de promoción de peón.
+        Guarda el estado del movimiento y muestra el popup de selección.
+        
+        Args:
+            origen: Casilla de origen del peón que se está promoviendo
+            destino: Casilla de destino (donde llegó el peón)
+        """
+        self.promocion_en_proceso = True
+        self.origen_promocion = origen
+        self.casilla_promocion = destino
+        
+        # Obtener el color del peón para mostrar las opciones correctas
+        pieza_promocion = self.modelo.tablero.getPieza(destino)
+        color_promocion = pieza_promocion.color if pieza_promocion else 'blanco'
+        
+        # Limpiar selección visual pero mantener estado de promoción
+        self.casilla_origen_seleccionada = None
+        self.movimientos_validos_cache = []
+        self.vista.casilla_origen = None
+        self.vista.movimientos_validos = []
+        self.vista.casillas_captura = []
+        self.vista.casillas_enroque_disponible = []
+        
+        # Mostrar popup de promoción
+        self.vista.mostrar_promocion_peon(color_promocion)
+        
+        logger.info(f"Iniciando promoción de peón {color_promocion} en {destino}")
+    
+    def manejar_promocion_seleccionada(self, tipo_pieza):
+        """
+        Maneja la selección de pieza para promoción.
+        Recibe el tipo de pieza seleccionada y completa la promoción.
+        
+        Args:
+            tipo_pieza: Tipo de pieza seleccionada ('reina', 'torre', 'alfil', 'caballo')
+        """
+        if not self.promocion_en_proceso:
+            logger.warning("No hay promoción en proceso")
+            return
+            
+        if tipo_pieza is None:
+            logger.warning("No se ha seleccionado ninguna pieza para promoción")
+            return
+            
+        # Completar la promoción en el modelo
+        try:
+            if hasattr(self.modelo, 'completar_promocion') and callable(self.modelo.completar_promocion):
+                exito = self.modelo.completar_promocion(self.casilla_promocion, tipo_pieza)
+                
+                if exito:
+                    logger.info(f"Promoción completada: {tipo_pieza} en {self.casilla_promocion}")
+                    
+                    # Limpiar estado de promoción
+                    self._finalizar_promocion()
+                    
+                    # Cerrar popup y actualizar estado del juego
+                    self.vista.cerrar_popup_promocion()
+                    self._actualizar_estado_post_movimiento()
+                else:
+                    logger.error("Error al completar la promoción en el modelo")
+            else:
+                logger.error("El modelo no tiene el método 'completar_promocion'")
+                
+        except Exception as e:
+            logger.error(f"Excepción al completar promoción: {e}")
+    
+    def _finalizar_promocion(self):
+        """
+        Limpia el estado de promoción del controlador.
+        """
+        self.promocion_en_proceso = False
+        self.casilla_promocion = None
+        self.origen_promocion = None
+        logger.debug("Estado de promoción limpiado")
 
     def mostrar_popup_fin_juego(self, resultado, motivo=None):
         """
@@ -398,6 +485,9 @@ class ControladorJuego:
         self.casilla_origen_seleccionada = None
         self.movimientos_validos_cache = []
         self.juego_terminado = False
+        
+        # Limpiar estado de promoción
+        self._finalizar_promocion()
         
         # Reiniciar modelo (tablero, estado de juego, etc.)
         exito_reinicio = False
@@ -444,6 +534,9 @@ class ControladorJuego:
         self.casilla_origen_seleccionada = None
         self.movimientos_validos_cache = []
         self.juego_terminado = False
+        
+        # Limpiar estado de promoción
+        self._finalizar_promocion()
         
         # Reiniciar el modelo para que esté limpio (igual que en reiniciar_juego)
         # Esto garantiza que no queden datos residuales cuando se inicie una nueva partida

@@ -89,6 +89,11 @@ class InterfazAjedrez:
         self.mensaje_fin_juego = ""
         self.tipo_fin_juego = None  # Puede ser: 'victoria_blanco', 'victoria_negro', 'tablas'
         
+        # Estado para el popup de promoción de peón
+        self.mostrar_popup_promocion = False
+        self.color_promocion = None  # Color del peón que se está promoviendo
+        self.pieza_promocion_seleccionada = None  # La pieza seleccionada por el usuario
+        
         # Estado para el botón de desarrollo y su menú
         self.mostrar_menu_dev = False
         self.botones_desarrollo = {}
@@ -1009,8 +1014,11 @@ class InterfazAjedrez:
             # Eventos para la vista del tablero
             elif self.vista_actual == 'tablero':
                 if evento.type == pygame.MOUSEBUTTONDOWN:
-                    # Si el popup de fin de juego está abierto, manejarlo primero
-                    if self.mostrar_popup_fin_juego:
+                    # Si el popup de promoción está abierto, manejarlo primero
+                    if self.mostrar_popup_promocion:
+                        self._manejar_clic_popup_promocion(evento.pos)
+                    # Si el popup de fin de juego está abierto, manejarlo
+                    elif self.mostrar_popup_fin_juego:
                         self._manejar_clic_popup_fin_juego(evento.pos)
                     # Si el menú de desarrollo está abierto, manejarlo
                     elif self.mostrar_menu_dev:
@@ -1187,8 +1195,11 @@ class InterfazAjedrez:
             self._actualizar_display_tiempos()
             self.dibujar_pantalla_tablero(tablero)
             
+            # Si hay un popup de promoción que mostrar, dibujarlo encima
+            if self.mostrar_popup_promocion:
+                self._dibujar_popup_promocion()
             # Si hay un popup de fin de juego que mostrar, dibujarlo encima
-            if self.mostrar_popup_fin_juego:
+            elif self.mostrar_popup_fin_juego:
                 self._dibujar_popup_fin_juego()
         
         pygame.display.flip()
@@ -1296,6 +1307,37 @@ class InterfazAjedrez:
         
         # Actualizar la pantalla para mostrar el popup inmediatamente
         self.actualizar(self.controlador.obtener_tablero())
+    
+    def mostrar_promocion_peon(self, color):
+        """
+        Muestra el popup de promoción de peón para que el usuario elija la pieza.
+        
+        Args:
+            color: Color del peón que se está promoviendo ('blanco' o 'negro').
+        """
+        self.mostrar_popup_promocion = True
+        self.color_promocion = color
+        self.pieza_promocion_seleccionada = None
+        
+        # Actualizar la pantalla para mostrar el popup inmediatamente
+        self.actualizar(self.controlador.obtener_tablero())
+    
+    def obtener_promocion_seleccionada(self):
+        """
+        Obtiene la pieza seleccionada para la promoción del peón.
+        
+        Returns:
+            str: Tipo de pieza seleccionada ('reina', 'torre', 'alfil', 'caballo') o None si no se ha seleccionado.
+        """
+        return self.pieza_promocion_seleccionada
+    
+    def cerrar_popup_promocion(self):
+        """
+        Cierra el popup de promoción y limpia el estado relacionado.
+        """
+        self.mostrar_popup_promocion = False
+        self.color_promocion = None
+        self.pieza_promocion_seleccionada = None
         
     def _dibujar_popup_fin_juego(self):
         """
@@ -1376,6 +1418,92 @@ class InterfazAjedrez:
             'menu_principal': boton_menu_rect
         }
     
+    def _dibujar_popup_promocion(self):
+        """
+        Dibuja el popup de promoción de peón con las 4 opciones de piezas.
+        Sigue el mismo estilo que el popup de fin de juego.
+        """
+        # 1. Dibujar overlay semi-transparente
+        overlay = pygame.Surface(self.DIMENSIONES['ventana'], pygame.SRCALPHA)
+        overlay.fill(self.COLORES['overlay'])
+        self.ventana.blit(overlay, (0, 0))
+        
+        # 2. Calcular tamaños de los elementos
+        titulo_texto = self.fuente_subtitulo.render("Promoción de Peón", True, self.COLORES['negro'])
+        subtitulo_texto = self.fuente_titulo.render("Escoge una pieza", True, self.COLORES['negro'])
+        
+        # Dimensiones de las piezas y el popup
+        tamaño_pieza = 80  # Tamaño de cada icono de pieza
+        espacio_entre_piezas = 20  # Espacio entre piezas
+        padding_horizontal = 40
+        padding_vertical = 30
+        
+        # Calcular ancho del popup basado en las 4 piezas
+        ancho_piezas = 4 * tamaño_pieza + 3 * espacio_entre_piezas
+        ancho_textos = max(titulo_texto.get_width(), subtitulo_texto.get_width())
+        popup_ancho = max(ancho_piezas, ancho_textos) + padding_horizontal * 2
+        
+        # Calcular alto del popup
+        alto_titulo = titulo_texto.get_height()
+        alto_subtitulo = subtitulo_texto.get_height()
+        popup_alto = padding_vertical + alto_titulo + padding_vertical + alto_subtitulo + padding_vertical + tamaño_pieza + padding_vertical
+        
+        # 3. Calcular posición del popup (centrado)
+        ventana_ancho, ventana_alto = self.DIMENSIONES['ventana']
+        popup_x = (ventana_ancho - popup_ancho) // 2
+        popup_y = (ventana_alto - popup_alto) // 2 - 20
+        
+        # 4. Dibujar fondo del popup
+        popup_rect = pygame.Rect(popup_x, popup_y, popup_ancho, popup_alto)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], popup_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['gris_oscuro'], popup_rect, 2)  # Borde
+        
+        # 5. Dibujar título "Promoción de Peón"
+        titulo_rect = titulo_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical + alto_titulo // 2))
+        self.ventana.blit(titulo_texto, titulo_rect)
+        
+        # 6. Dibujar subtítulo "Escoge una pieza"
+        subtitulo_rect = subtitulo_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical*2 + alto_titulo + alto_subtitulo // 2))
+        self.ventana.blit(subtitulo_texto, subtitulo_rect)
+        
+        # 7. Dibujar las 4 opciones de piezas
+        y_piezas = popup_y + padding_vertical*3 + alto_titulo + alto_subtitulo
+        
+        # Calcular posición inicial x para centrar las 4 piezas
+        x_inicial = popup_x + (popup_ancho - ancho_piezas) // 2
+        
+        # Lista de tipos de piezas en el orden: Reina, Torre, Alfil, Caballo
+        tipos_piezas = ['reina', 'torre', 'alfil', 'caballo']
+        
+        # Guardar referencias a los rectángulos para detectar clics
+        self.elementos_ui['popup_promocion'] = {}
+        
+        for i, tipo_pieza in enumerate(tipos_piezas):
+            x_pieza = x_inicial + i * (tamaño_pieza + espacio_entre_piezas)
+            
+            # Crear rectángulo para la pieza
+            pieza_rect = pygame.Rect(x_pieza, y_piezas, tamaño_pieza, tamaño_pieza)
+            
+            # Dibujar fondo para la pieza (opcional, para mejor visibilidad)
+            pygame.draw.rect(self.ventana, self.COLORES['gris_claro'], pieza_rect)
+            pygame.draw.rect(self.ventana, self.COLORES['gris_medio'], pieza_rect, 2)
+            
+            # Obtener y dibujar la imagen de la pieza
+            imagen_pieza = self.imagenes_piezas.get(self.color_promocion, {}).get(tipo_pieza)
+            if imagen_pieza:
+                # Escalar la imagen al tamaño deseado
+                imagen_escalada = pygame.transform.smoothscale(imagen_pieza, (tamaño_pieza - 10, tamaño_pieza - 10))
+                imagen_rect = imagen_escalada.get_rect(center=pieza_rect.center)
+                self.ventana.blit(imagen_escalada, imagen_rect)
+            else:
+                # Fallback: dibujar texto si no hay imagen
+                texto_pieza = self.fuente_normal.render(tipo_pieza.capitalize(), True, self.COLORES['negro'])
+                texto_rect = texto_pieza.get_rect(center=pieza_rect.center)
+                self.ventana.blit(texto_pieza, texto_rect)
+            
+            # Guardar referencia al rectángulo para detectar clics
+            self.elementos_ui['popup_promocion'][tipo_pieza] = pieza_rect
+    
     def _manejar_clic_popup_fin_juego(self, pos):
         """
         Maneja los clics en los botones del popup de fin de juego.
@@ -1393,6 +1521,31 @@ class InterfazAjedrez:
         # Verificar clic en botón "Menú Principal"
         elif self.elementos_ui['popup_fin_juego']['menu_principal'].collidepoint(pos):
             self._volver_menu_principal()
+    
+    def _manejar_clic_popup_promocion(self, pos):
+        """
+        Maneja los clics en las piezas del popup de promoción.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        if 'popup_promocion' not in self.elementos_ui:
+            return
+            
+        # Verificar clic en cada opción de pieza
+        for tipo_pieza, rect in self.elementos_ui['popup_promocion'].items():
+            if rect.collidepoint(pos):
+                # Guardar la pieza seleccionada
+                self.pieza_promocion_seleccionada = tipo_pieza
+                
+                # Ocultar el popup
+                self.mostrar_popup_promocion = False
+                
+                # Notificar al controlador sobre la selección
+                if hasattr(self.controlador, 'manejar_promocion_seleccionada'):
+                    self.controlador.manejar_promocion_seleccionada(tipo_pieza)
+                
+                return
     
     def _reiniciar_juego(self):
         """
