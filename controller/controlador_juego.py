@@ -23,9 +23,14 @@ project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
 from model.juego import Juego
-from model.piezas import Pieza
+from model.piezas.pieza import Pieza
+from model.piezas.rey import Rey
 from model.tablero import Tablero
+from model.jugadores.jugador_cpu import JugadorCPU
 from view.interfaz_ajedrez import InterfazAjedrez
+
+# Importar KillGame para uso en desarrollo
+from model.kill_game import KillGame
 
 class ControladorJuego:
     """
@@ -103,8 +108,16 @@ class ControladorJuego:
         """
         Llamado por la Vista cuando el usuario pulsa 'Jugar'.
         Obtiene la configuración, inicializa el modelo y cambia la vista.
+        Valida que se hayan seleccionado las opciones requeridas antes de iniciar.
         """
         config = self.vista.obtener_configuracion()
+        
+        # Verificar si la configuración es válida
+        if config is None:
+            # Si no hay configuración válida, mostrar mensaje de error
+            self.vista.mostrar_error_config("Debes seleccionar un tipo y una modalidad de juego")
+            return
+            
         logger.debug("Controlador solicitando inicio de juego con config: %s", config)
         
         # === PASO CLAVE: Inicializar/Configurar el modelo ===
@@ -131,26 +144,39 @@ class ControladorJuego:
         self.casilla_origen_seleccionada = None
         self.movimientos_validos_cache = []
         self.juego_terminado = False 
+        
+        # Estado para gestión de promoción de peón
+        self.promocion_en_proceso = False
+        self.casilla_promocion = None  # Casilla donde está el peón que se promoverá
+        self.origen_promocion = None   # Casilla de origen del movimiento de promoción 
 
         # Limpiar la selección visual en la vista por si acaso
         self.vista.casilla_origen = None
         self.vista.movimientos_validos = []
         
         # Forzar una actualización inmediata para mostrar el tablero limpio
-        # Pasamos el tablero recién inicializado/reseteado
-        # self.vista.actualizar(self.obtener_tablero()) # El bucle principal se encargará
+        self.vista.actualizar(self.obtener_tablero())
+        
+        # AÑADIDO: Verificar si el jugador inicial es CPU y programar su movimiento
+        if len(self.modelo.jugadores) >= 2:
+            jugador_inicial = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+            if isinstance(jugador_inicial, JugadorCPU):
+                logger.info("Programando movimiento inicial para jugador CPU")
+                self.tiempo_movimiento_cpu = pygame.time.get_ticks() + 1000  # 1 segundo de delay inicial
 
     def manejar_clic_casilla(self, casilla: Tuple[int, int]):
         """
         Gestiona la lógica principal cuando el usuario hace clic en una casilla del tablero.
-        Incluye la selección de piezas y la ejecución de movimientos.
-
-        Args:
-            casilla: Tupla (fila, columna) de la casilla clickeada.
         """
         logger.debug("Controlador: Clic en casilla %s", casilla)
         if self.juego_terminado:
             logger.debug("Juego terminado, ignorando clic.")
+            return
+
+        # Verificar si el jugador actual es una CPU
+        jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+        if isinstance(jugador_actual, JugadorCPU):
+            logger.info("Turno de CPU, ignorando clic.")
             return
 
         # Obtener estado necesario
@@ -169,10 +195,40 @@ class ControladorJuego:
                     # Si hay movimientos válidos, seleccionar la pieza
                     self.casilla_origen_seleccionada = casilla
                     self.movimientos_validos_cache = movimientos
+                    
+                    # Identificar cuáles son movimientos de captura (casillas con piezas rivales)
+                    capturas = []
+                    movimientos_sin_captura = []
+                    enroques_disponibles = [] # Nueva lista para destinos de enroque del rey
+
+                    if isinstance(pieza, Rey):
+                        # Para el rey, los movimientos a 2 casillas de distancia horizontal son enroques
+                        col_origen = casilla[1]
+                        for mov in movimientos:
+                            if abs(col_origen - mov[1]) == 2:
+                                enroques_disponibles.append(mov)
+                            else:
+                                pieza_destino = tablero.getPieza(mov)
+                                if pieza_destino is not None and pieza_destino.color != pieza.color:
+                                    capturas.append(mov)
+                                else:
+                                    movimientos_sin_captura.append(mov)
+                    else:
+                        for mov in movimientos:
+                            pieza_destino = tablero.getPieza(mov)
+                            if pieza_destino is not None and pieza_destino.color != pieza.color:
+                                capturas.append(mov)
+                            else:
+                                movimientos_sin_captura.append(mov)
+                            
                     # Actualizar la vista para mostrar resaltados
                     self.vista.casilla_origen = casilla
-                    self.vista.movimientos_validos = movimientos
-                    logger.debug("Pieza %s en %s seleccionada.", pieza, casilla)
+                    self.vista.movimientos_validos = movimientos_sin_captura
+                    self.vista.casillas_captura = capturas
+                    self.vista.casillas_enroque_disponible = enroques_disponibles # Pasar a la vista
+                    
+                    logger.debug("Pieza %s en %s seleccionada. Movs normales: %s, Capturas: %s, Enroques: %s", 
+                                 pieza, casilla, movimientos_sin_captura, capturas, enroques_disponibles)
                 else:
                     # Pieza propia sin movimientos válidos
                     logger.debug("Pieza %s en %s no tiene movimientos válidos.", pieza, casilla)
@@ -184,10 +240,7 @@ class ControladorJuego:
         
         # === CASO 2: Ya había una pieza seleccionada ===
         else:
-             # Esta lógica se implementará en la Funcionalidad 4 (Realización de Movimientos)
-             logger.debug("Clic en %s mientras %s estaba seleccionada.", casilla, self.casilla_origen_seleccionada)
-             
-             # Verificar si el clic fue en un destino válido
+             # Verificar si el clic fue en un destino válido (movimiento normal o captura)
              if casilla in self.movimientos_validos_cache:
                  # --- Ejecutar Movimiento --- 
                  origen = self.casilla_origen_seleccionada
@@ -197,14 +250,13 @@ class ControladorJuego:
                  # Este método debe actualizar el tablero y el turno internamente.
                  # Reemplaza 'realizar_movimiento' si se llama diferente en tu clase Juego.
                  exito_movimiento = False
+                 resultado_movimiento = None
                  try:
                      if hasattr(self.modelo, 'realizar_movimiento') and callable(self.modelo.realizar_movimiento):
                          # Idealmente, este método devuelve algo útil (True/False, estado, etc.)
-                         resultado = self.modelo.realizar_movimiento(origen, casilla)
-                         # Asumimos éxito si no hay excepción por ahora
-                         # Podríamos necesitar ajustar esto según lo que devuelva tu método real
+                         resultado_movimiento = self.modelo.realizar_movimiento(origen, casilla)
                          exito_movimiento = True 
-                         logger.debug("Modelo realizó movimiento. Resultado: %s", resultado)
+                         logger.debug("Modelo realizó movimiento. Resultado: %s", resultado_movimiento)
                      else:
                          logger.error("ERROR: El modelo Juego no tiene el método 'realizar_movimiento'")
                  except Exception as e:
@@ -212,8 +264,14 @@ class ControladorJuego:
                      # Podríamos querer no limpiar la selección si el movimiento falla en el modelo
 
                  if exito_movimiento:
-                     self._limpiar_seleccion_vista() # Limpia selección interna y visual
-                     self._actualizar_estado_post_movimiento() # Comprueba estado (jaque, mate, etc.)
+                     # Verificar si el resultado indica que se necesita promoción
+                     if resultado_movimiento == 'promocion_requerida':
+                         # Promoción de peón detectada
+                         self._iniciar_promocion_peon(origen, casilla)
+                     else:
+                         # Movimiento normal completado
+                         self._limpiar_seleccion_vista() # Limpia selección interna y visual
+                         self._actualizar_estado_post_movimiento() # Comprueba estado (jaque, mate, etc.)
                  # else: # Si el movimiento falla en el modelo, ¿qué hacer? ¿Mantener selección? 
                      # Por ahora, asumimos que si estaba en movs_validos, el modelo debe aceptarlo
                      # o lanzar una excepción que capturamos.
@@ -237,14 +295,14 @@ class ControladorJuego:
          if self.vista: # Asegurarse de que la vista existe
              self.vista.casilla_origen = None
              self.vista.movimientos_validos = []
+             self.vista.casillas_captura = []
+             self.vista.casillas_enroque_disponible = [] # Asegurarse de limpiar aquí también
          logger.debug("Selección limpiada.")
 
     def _actualizar_estado_post_movimiento(self):
         """
-        Llamado después de que un movimiento se realiza con éxito en el modelo.
-        Consulta el estado actualizado del juego (turno, jaque, mate, tablas) 
-        y actualiza la vista si es necesario.
-        (Por ahora, solo imprime mensajes, la lógica completa vendrá después).
+        Comprueba el estado del juego después de un movimiento y
+        actualiza la interfaz según corresponda.
         """
         logger.debug("Controlador: Actualizando estado post-movimiento.")
         
@@ -263,88 +321,438 @@ class ControladorJuego:
             logger.debug("Nuevo turno: %s, Estado: %s, Datos Display: %s", nuevo_turno, estado_juego, datos_display)
             
             # === Actualizar Resto de la Vista ===
-            # Actualizar turno visualmente (ya se hizo en cambiar_turno_temporizador, pero redundancia no daña)
-            # self.vista.turno_actual = nuevo_turno # Comentado ya que cambiar_turno_temporizador lo hace
-            
             # Actualizar datos de jugadores (nombre se mantiene, tiempo y capturas cambian)
-            # NOTA: Los tiempos ahora se actualizan en vista.actualizar(), no necesitamos pasarlos aquí.
-            # self.vista.jugadores['blanco']['tiempo'] = datos_display['blanco']['tiempo'] # Comentado
-            self.vista.jugadores['blanco']['piezas_capturadas'] = datos_display['blanco']['capturadas']
-            # self.vista.jugadores['negro']['tiempo'] = datos_display['negro']['tiempo'] # Comentado
-            self.vista.jugadores['negro']['piezas_capturadas'] = datos_display['negro']['capturadas']
+            if 'blanco' in datos_display and 'capturadas' in datos_display['blanco']:
+                piezas_capturadas_blanco = datos_display['blanco']['capturadas']
+                self.vista.jugadores['blanco']['piezas_capturadas'] = piezas_capturadas_blanco
+                if piezas_capturadas_blanco:
+                    tipos_capturados = [type(p).__name__ for p in piezas_capturadas_blanco]
+                    logger.debug(f"Actualizadas piezas capturadas del jugador blanco: {len(piezas_capturadas_blanco)} piezas: {tipos_capturados}")
+                
+            if 'negro' in datos_display and 'capturadas' in datos_display['negro']:
+                piezas_capturadas_negro = datos_display['negro']['capturadas']
+                self.vista.jugadores['negro']['piezas_capturadas'] = piezas_capturadas_negro
+                if piezas_capturadas_negro:
+                    tipos_capturados = [type(p).__name__ for p in piezas_capturadas_negro]
+                    logger.debug(f"Actualizadas piezas capturadas del jugador negro: {len(piezas_capturadas_negro)} piezas: {tipos_capturados}")
             
-            # Actualizar mensaje de estado
-            if estado_juego in ['jaque_mate', 'tablas', 'ahogado']: 
+            # Verificar el estado del juego
+            self.juego_terminado = estado_juego in ['jaque_mate', 'tablas', 'ahogado']
+            
+            # Actualizar mensaje de estado del juego si es necesario
+            if estado_juego == 'jaque':
+                self.vista.mostrar_mensaje_estado(f"Jaque al Rey {nuevo_turno}")
+            elif estado_juego == 'jaque_mate':
+                color_ganador = 'negro' if nuevo_turno == 'blanco' else 'blanco'
+                self.vista.mostrar_mensaje_estado(f"Jaque Mate. Gana {color_ganador}.")
                 self.juego_terminado = True
-                logger.info("INFO: ¡Partida terminada! Estado: %s", estado_juego)
-                mensaje_final = {
-                    'jaque_mate': "¡Jaque Mate!",
-                    'tablas': "¡Tablas!",
-                    'ahogado': "¡Tablas por Ahogado!"
-                }.get(estado_juego, f"¡Fin! ({estado_juego})")
-                self.vista.mostrar_mensaje_estado(mensaje_final)
-            elif estado_juego == 'jaque':
-                 logger.info("INFO: ¡Jaque al rey %s!", nuevo_turno) # Ahora sabemos a quién!
-                 self.vista.mostrar_mensaje_estado("¡Jaque!")
-            else: 
-                 self.vista.mostrar_mensaje_estado(None)
-                 
+                self.mostrar_popup_fin_juego('victoria_' + color_ganador, 'jaque_mate')
+            elif estado_juego == 'tablas':
+                self.vista.mostrar_mensaje_estado("Tablas.")
+                self.juego_terminado = True
+                # Obtener el motivo específico de tablas desde el modelo
+                motivo_tablas = self.modelo.getMotivoTablas() or 'material_insuficiente'
+                self.mostrar_popup_fin_juego('tablas', motivo_tablas)
+            elif estado_juego == 'ahogado':
+                self.vista.mostrar_mensaje_estado("Ahogado. Tablas.")
+                self.juego_terminado = True
+                self.mostrar_popup_fin_juego('tablas', 'ahogado')
+            else:
+                self.vista.mostrar_mensaje_estado(None) # Limpiar mensaje si no hay estado especial
+            
+            # Actualizar tablero
+            tablero_actual = self.obtener_tablero()
+            self.vista.actualizar(tablero_actual)
+            
+            # 3. Programar próximo movimiento CPU si corresponde
+            if not self.juego_terminado:
+                # Verificar si el próximo jugador es CPU
+                if len(self.modelo.jugadores) >= 2:
+                    jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+                    if isinstance(jugador_actual, JugadorCPU):
+                        # Programar procesamiento de movimiento CPU con un pequeño delay
+                        # para que la interfaz tenga tiempo de actualizarse
+                        # Usar un delay más largo para CPU vs CPU para que sea más visible
+                        if all(isinstance(j, JugadorCPU) for j in self.modelo.jugadores):
+                            delay = 1000  # 1 segundo para CPU vs CPU
+                        else:
+                            delay = 1000   # 1 segundos para Humano vs CPU
+                        
+                        self.tiempo_movimiento_cpu = pygame.time.get_ticks() + delay
+                        logger.info(f"Programando movimiento CPU para {jugador_actual.get_nombre()} en {delay}ms")
+            
         except Exception as e:
-            logger.error("ERROR al obtener estado post-movimiento del modelo: %s", e)
-            # Considerar mostrar error en UI?
+            logger.error(f"Excepción en _actualizar_estado_post_movimiento: {e}", exc_info=True)
+    
+    def _iniciar_promocion_peon(self, origen, destino):
+        """
+        Inicia el proceso de promoción de peón.
+        Guarda el estado del movimiento y muestra el popup de selección.
+        
+        Args:
+            origen: Casilla de origen del peón que se está promoviendo
+            destino: Casilla de destino (donde llegó el peón)
+        """
+        self.promocion_en_proceso = True
+        self.origen_promocion = origen
+        self.casilla_promocion = destino
+        
+        # Obtener el color del peón para mostrar las opciones correctas
+        pieza_promocion = self.modelo.tablero.getPieza(destino)
+        color_promocion = pieza_promocion.color if pieza_promocion else 'blanco'
+        
+        # Limpiar selección visual pero mantener estado de promoción
+        self.casilla_origen_seleccionada = None
+        self.movimientos_validos_cache = []
+        self.vista.casilla_origen = None
+        self.vista.movimientos_validos = []
+        self.vista.casillas_captura = []
+        self.vista.casillas_enroque_disponible = []
+        
+        # Mostrar popup de promoción
+        self.vista.mostrar_promocion_peon(color_promocion)
+        
+        logger.info(f"Iniciando promoción de peón {color_promocion} en {destino}")
+    
+    def manejar_promocion_seleccionada(self, tipo_pieza):
+        """
+        Maneja la selección de pieza para promoción.
+        Recibe el tipo de pieza seleccionada y completa la promoción.
+        
+        Args:
+            tipo_pieza: Tipo de pieza seleccionada ('reina', 'torre', 'alfil', 'caballo')
+        """
+        if not self.promocion_en_proceso:
+            logger.warning("No hay promoción en proceso")
+            return
+            
+        if tipo_pieza is None:
+            logger.warning("No se ha seleccionado ninguna pieza para promoción")
+            return
+            
+        # Completar la promoción en el modelo
+        try:
+            if hasattr(self.modelo, 'completar_promocion') and callable(self.modelo.completar_promocion):
+                exito = self.modelo.completar_promocion(self.casilla_promocion, tipo_pieza)
+                
+                if exito:
+                    logger.info(f"Promoción completada: {tipo_pieza} en {self.casilla_promocion}")
+                    
+                    # Limpiar estado de promoción
+                    self._finalizar_promocion()
+                    
+                    # Cerrar popup y actualizar estado del juego
+                    self.vista.cerrar_popup_promocion()
+                    self._actualizar_estado_post_movimiento()
+                else:
+                    logger.error("Error al completar la promoción en el modelo")
+            else:
+                logger.error("El modelo no tiene el método 'completar_promocion'")
+                
+        except Exception as e:
+            logger.error(f"Excepción al completar promoción: {e}")
+    
+    def _finalizar_promocion(self):
+        """
+        Limpia el estado de promoción del controlador.
+        """
+        self.promocion_en_proceso = False
+        self.casilla_promocion = None
+        self.origen_promocion = None
+        logger.debug("Estado de promoción limpiado")
 
+    def mostrar_popup_fin_juego(self, resultado, motivo=None):
+        """
+        Muestra el popup de fin de juego con el resultado correspondiente.
+        
+        Args:
+            resultado: Tipo de resultado ('victoria_blanco', 'victoria_negro', 'tablas')
+            motivo: Motivo específico del fin de juego ('jaque_mate', 'ahogado', etc.)
+        """
+        if not self.juego_terminado:
+            self.juego_terminado = True
+        
+        logger.info(f"Fin del juego: {resultado} por {motivo}")
+        self.vista.mostrar_fin_de_juego(resultado, motivo)
+    
+    def reiniciar_juego(self):
+        """
+        Reinicia el juego con la misma configuración.
+        """
+        logger.info("Reiniciando juego con la misma configuración")
+        
+        # Reiniciar estado del controlador
+        self.casilla_origen_seleccionada = None
+        self.movimientos_validos_cache = []
+        self.juego_terminado = False
+        
+        # Limpiar estado de promoción
+        self._finalizar_promocion()
+        
+        # Reiniciar modelo (tablero, estado de juego, etc.)
+        exito_reinicio = False
+        if hasattr(self.modelo, 'reiniciar') and callable(self.modelo.reiniciar):
+            exito_reinicio = self.modelo.reiniciar()
+        else:
+            # Fallback si no existe el método reiniciar
+            config = self.vista.obtener_configuracion()
+            if hasattr(self.modelo, 'configurar_nueva_partida') and callable(self.modelo.configurar_nueva_partida):
+                self.modelo.configurar_nueva_partida(config)
+                exito_reinicio = True
+            else:
+                logger.warning("No se encontró método para reiniciar el modelo. Creando nuevo tablero.")
+                self.modelo.tablero = Tablero()
+                exito_reinicio = True
+        
+        # Actualizar la vista con los datos del modelo reiniciado
+        if exito_reinicio:
+            # Limpiar piezas capturadas en la vista (siguiendo patrón MVC)
+            self.vista.jugadores['blanco']['piezas_capturadas'] = []
+            self.vista.jugadores['negro']['piezas_capturadas'] = []
+            
+            # Si el modelo tiene datos de jugador/piezas capturadas, usarlos para actualizar la vista
+            try:
+                datos_display = self.modelo.obtener_datos_display()
+                if 'blanco' in datos_display and 'capturadas' in datos_display['blanco']:
+                    self.vista.jugadores['blanco']['piezas_capturadas'] = datos_display['blanco']['capturadas']
+                if 'negro' in datos_display and 'capturadas' in datos_display['negro']:
+                    self.vista.jugadores['negro']['piezas_capturadas'] = datos_display['negro']['capturadas']
+                logger.debug("Piezas capturadas actualizadas en vista desde modelo después de reiniciar")
+            except Exception as e:
+                logger.error(f"Error al obtener datos de display después de reiniciar: {e}")
+        
+        # La vista ya habrá sido actualizada visualmente por el método _reiniciar_juego de InterfazAjedrez
+    
+    def volver_menu_principal(self):
+        """
+        Vuelve al menú principal/pantalla de configuración.
+        También reinicia el estado del juego para que esté limpio para la próxima partida.
+        """
+        logger.info("Volviendo al menú principal")
+        
+        # Reiniciar estado del controlador
+        self.casilla_origen_seleccionada = None
+        self.movimientos_validos_cache = []
+        self.juego_terminado = False
+        
+        # Limpiar estado de promoción
+        self._finalizar_promocion()
+        
+        # Reiniciar el modelo para que esté limpio (igual que en reiniciar_juego)
+        # Esto garantiza que no queden datos residuales cuando se inicie una nueva partida
+        if hasattr(self.modelo, 'reiniciar') and callable(self.modelo.reiniciar):
+            self.modelo.reiniciar()
+        else:
+            # Fallback si no existe el método reiniciar - crear un tablero nuevo
+            self.modelo.tablero = Tablero()
+            logger.warning("No se encontró método para reiniciar el modelo. Creando nuevo tablero.")
+        
+        # Limpiar datos en la vista que dependen del modelo
+        self.vista.jugadores['blanco']['piezas_capturadas'] = []
+        self.vista.jugadores['negro']['piezas_capturadas'] = []
+        
+        # No es necesario reiniciar el modelo aquí ya que se configurará
+        # cuando el usuario seleccione nuevas opciones y presione "Jugar"
+        
+        # La vista ya habrá sido actualizada por _volver_menu_principal de InterfazAjedrez
+    
     def iniciar(self):
         """
         Inicia el bucle principal del juego.
-        Maneja eventos y actualiza la vista hasta que el usuario cierre la aplicación.
         """
+        # Marcar que el controlador está ejecutándose
         self.running = True
         
-        # Comentario: El bucle principal del juego.
+        # Variable para controlar tiempo del próximo movimiento CPU
+        self.tiempo_movimiento_cpu = None
+        
+        # Bucle principal del juego
+        reloj = pygame.time.Clock()
+        
+        # Iniciar el bucle
         while self.running:
-            # --- Usar logging en lugar de print --- 
-            logger.debug("Inicio de iteración del bucle principal.")
-            
-            # Comentario: Procesa eventos de Pygame (input de usuario, cierre, etc.)
-            # El método de la vista devuelve False si se detecta el evento QUIT.
-            try:
-                logger.debug("Llamando a vista.manejar_eventos()...")
-                eventos_ok = self.vista.manejar_eventos() 
-                logger.debug(f"vista.manejar_eventos() devolvió: {eventos_ok}")
-                if not eventos_ok:
-                    self.running = False
-                    logger.info("manejador_eventos indicó salir.")
-                    continue # Salir del bucle si manejar_eventos devuelve False
-            except Exception as e:
-                logger.error(f"Excepción en vista.manejar_eventos(): {e}")
-                self.running = False # Salir en caso de error
-                continue
+            # --- Procesar eventos de pygame ---
+            if not self.vista.manejar_eventos():
+                # Si manejar_eventos devuelve False, salir del bucle
+                self.running = False
+                break
                 
-            # Comentario: Actualiza y redibuja la pantalla. 
-            # Le pasamos el tablero si estamos en la vista de tablero, None si no.
-            tablero_actual = None
-            if self.vista.vista_actual == 'tablero': 
-                 tablero_actual = self.obtener_tablero() 
-                 
-            try:
-                logger.debug("Llamando a vista.actualizar()...")
-                self.vista.actualizar(tablero_actual)
-                logger.debug("vista.actualizar() completado.")
-            except Exception as e:
-                logger.error(f"Excepción en vista.actualizar(): {e}")
-                import traceback
-                traceback.print_exc() # Imprimir traceback completo
-                self.running = False # Salir en caso de error
-                continue
+            # --- Procesar lógica del juego ---
+            tiempo_actual = pygame.time.get_ticks()
             
-            # Comentario: Pequeña pausa para evitar consumir 100% CPU.
-            pygame.time.wait(30) # 30 ms de espera
-            logger.debug("Fin de iteración del bucle principal.")
-            # --- FIN Logging ---
-
-        # Comentario: Finaliza Pygame cuando el bucle termina.
+            # Verificar si es tiempo de realizar un movimiento de CPU
+            if self.tiempo_movimiento_cpu and tiempo_actual >= self.tiempo_movimiento_cpu:
+                # Resetear inmediatamente para evitar problemas de timing
+                self.tiempo_movimiento_cpu = None
+                
+                movimiento_realizado = self.procesar_movimiento_cpu()
+                
+                # Si se realizó un movimiento, forzar actualización de vista
+                if movimiento_realizado:
+                    self.vista.actualizar(self.obtener_tablero())
+            
+            # --- Actualizar vista ---
+            # Pasar el tablero a la vista para que lo dibuje
+            self.vista.actualizar(self.obtener_tablero())
+            
+            # Limitar fps 
+            reloj.tick(60)  # 60 FPS para mejor respuesta
+        
+        # Salir limpiamente
         pygame.quit()
-        logger.info("Juego finalizado.") # Mantenido en INFO
+        sys.exit()
+
+    # --- Métodos para manejar las jugadas del CPU ---
+    def procesar_movimiento_cpu(self):
+        """
+        Solicita y procesa un movimiento del jugador CPU actual si es su turno.
+        Este método debe ser llamado periódicamente en el bucle principal cuando
+        el turno corresponde a un jugador CPU.
+        
+        Returns:
+            bool: True si un movimiento CPU fue procesado, False si no corresponde o hubo error.
+        """
+        if self.juego_terminado:
+            return False
+            
+        # Obtener el jugador actual
+        if not self.modelo.jugadores or len(self.modelo.jugadores) < 2:
+            logger.error("No hay suficientes jugadores configurados para procesar movimiento CPU")
+            return False
+            
+        jugador_actual = self.modelo.jugadores[self.modelo.jugador_actual_idx]
+        turno_color = self.modelo.getTurnoColor()
+        
+        # Verificar que el jugador actual coincida con el turno actual
+        if jugador_actual.get_color() != turno_color:
+            # Try to find the correct player based on color
+            for i, jugador in enumerate(self.modelo.jugadores):
+                if jugador.get_color() == turno_color:
+                    self.modelo.jugador_actual_idx = i
+                    jugador_actual = jugador
+                    break
+        
+        # Verificar si el jugador actual es una CPU
+        if not isinstance(jugador_actual, JugadorCPU):
+            # No es CPU, nada que hacer
+            return False
+            
+        # Verificar que el color del jugador coincida con el turno actual
+        if jugador_actual.get_color() != turno_color:
+            logger.error(f"Error: Color del jugador CPU ({jugador_actual.get_color()}) "
+                         f"no coincide con el turno actual ({turno_color})")
+            return False
+            
+        logger.info(f"Solicitando movimiento a jugador CPU {jugador_actual.get_nombre()}")
+        
+        try:
+            # Solicitar movimiento al jugador CPU
+            origen, destino = jugador_actual.solicitarMovimiento(self.modelo)
+            
+            # Verificar si el movimiento es válido ((-1,-1),(-1,-1) indica error/fin de juego)
+            if origen == (-1,-1) or destino == (-1,-1):
+                logger.error(f"El jugador CPU {jugador_actual.get_nombre()} no pudo generar un movimiento válido")
+                return False
+                
+            # Ejecutar el movimiento
+            logger.info(f"Ejecutando movimiento CPU: {origen} -> {destino}")
+            if hasattr(self.modelo, 'realizar_movimiento') and callable(self.modelo.realizar_movimiento):
+                resultado = self.modelo.realizar_movimiento(origen, destino)
+                
+                # Actualizar el estado del juego después del movimiento
+                self._actualizar_estado_post_movimiento()
+                
+                # IMPORTANTE: No programar aquí el próximo movimiento CPU,
+                # ya que eso se hace en _actualizar_estado_post_movimiento
+                # y podría interferir con el flujo normal del juego.
+                
+                return True
+            else:
+                logger.error("El modelo no tiene un método 'realizar_movimiento' válido")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error al procesar movimiento CPU: {e}")
+            return False
+            
+    def _manejar_fin_juego(self, estado):
+        """
+        Maneja el fin del juego, mostrando el mensaje apropiado según el estado.
+        
+        Args:
+            estado: Estado del juego ('jaque_mate', 'tablas', 'ahogado', etc.)
+        """
+        color_perdedor = self.modelo.getTurnoColor()  # El color del jugador que no puede mover
+        color_ganador = 'negro' if color_perdedor == 'blanco' else 'blanco'
+        
+        if estado == 'jaque_mate':
+            mensaje = f"¡Jaque Mate! Ganan las {color_ganador}s."
+            self.vista.mostrar_fin_de_juego(f"victoria_{color_ganador}", f"¡Jaque Mate! El rey {color_perdedor} no puede escapar.")
+        elif estado == 'ahogado':
+            mensaje = f"¡Tablas por ahogado! El rey {color_perdedor} no puede moverse pero no está en jaque."
+            self.vista.mostrar_fin_de_juego('tablas', mensaje)
+        elif estado == 'tablas':
+            # Obtener el motivo de tablas (regla 50 movimientos, repetición, material insuficiente)
+            motivo = self.modelo.getMotivoTablas() if hasattr(self.modelo, 'getMotivoTablas') else "Tablas"
+            self.vista.mostrar_fin_de_juego('tablas', motivo)
+        else:
+            logger.warning(f"Estado de fin de juego desconocido: {estado}")
+            self.vista.mostrar_fin_de_juego('tablas', f"Fin de partida: {estado}")
+            
+        # Asegurarse de que se detenga el temporizador
+        self.vista.detener_temporizador()
+
+    # ---------- MÉTODOS DE DESARROLLO (NO USAR EN PRODUCCIÓN) ----------
+    def dev_forzar_fin_juego(self, resultado: str, motivo: str = None):
+        """
+        MÉTODO DE DESARROLLO - Fuerza el fin del juego para probar el popup de fin de juego.
+        
+        Args:
+            resultado: Tipo de resultado ('victoria_blanco', 'victoria_negro', 'tablas')
+            motivo: Motivo del fin de juego ('jaque_mate', 'ahogado', etc.)
+        """
+        logger.warning("⚠️ USANDO MÉTODO DE DESARROLLO PARA FORZAR FIN DE JUEGO")
+        
+        try:
+            # Crear instancia de KillGame y forzar el fin
+            killer = KillGame(self.modelo)
+            killer.forzar_fin_juego(resultado, motivo)
+            
+            # Asegurarnos de que el modelo y la vista estén sincronizados
+            self.modelo.estado = self.modelo.getEstadoJuego()
+            
+            # Actualizar la vista para mostrar el fin de juego
+            self._actualizar_estado_post_movimiento()
+            
+            # Marcar el juego como terminado
+            self.juego_terminado = True
+        except Exception as e:
+            logger.error(f"Error al forzar fin de juego: {e}", exc_info=True)
+        
+    def dev_test_victoria_blancas(self):
+        """MÉTODO DE DESARROLLO - Simula victoria de las blancas por jaque mate"""
+        self.dev_forzar_fin_juego('victoria_blanco', 'jaque_mate')
+        
+    def dev_test_victoria_negras(self):
+        """MÉTODO DE DESARROLLO - Simula victoria de las negras por jaque mate"""
+        self.dev_forzar_fin_juego('victoria_negro', 'jaque_mate')
+        
+    def dev_test_tablas_ahogado(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por ahogado"""
+        self.dev_forzar_fin_juego('tablas', 'ahogado')
+        
+    def dev_test_tablas_insuficiente(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por material insuficiente"""
+        self.dev_forzar_fin_juego('tablas', 'material_insuficiente')
+        
+    def dev_test_tablas_repeticion(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por triple repetición"""
+        self.dev_forzar_fin_juego('tablas', 'repeticion')
+        
+    def dev_test_tablas_50_movimientos(self):
+        """MÉTODO DE DESARROLLO - Simula tablas por regla de 50 movimientos"""
+        self.dev_forzar_fin_juego('tablas', 'regla_50_movimientos')
+    # ------------------------------------------------------------------
 
 # Código para ejecutar el juego si este script es el principal
 # (Útil para pruebas rápidas)

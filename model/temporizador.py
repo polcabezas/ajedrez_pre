@@ -82,6 +82,31 @@ class Temporizador:
             tiempos_fmt[color] = f"{minutos:02d}:{segundos_restantes:02d}"
         return tiempos_fmt
 
+    def reiniciar(self, tiempos_nuevos: Dict[Literal['blanco', 'negro'], float]):
+        """
+        Reinicia el temporizador con nuevos valores de tiempo.
+        
+        Args:
+            tiempos_nuevos: Un diccionario con los segundos iniciales 
+                           para 'blanco' y 'negro'.
+                           Ej: {'blanco': 600.0, 'negro': 600.0}
+        """
+        if not (isinstance(tiempos_nuevos, dict) and 
+                'blanco' in tiempos_nuevos and 
+                'negro' in tiempos_nuevos):
+            raise ValueError("tiempos_nuevos debe ser un dict con claves 'blanco' y 'negro'")
+        
+        # Detener el temporizador primero
+        self.detener()
+        
+        # Establecer los nuevos tiempos
+        self.tiempos_restantes = tiempos_nuevos.copy()
+        
+        # Reiniciar estados
+        self.turno_activo = None
+        self._ultimo_timestamp = None
+        self.corriendo = False
+
     def __str__(self) -> str:
          tiempos = self.get_tiempos_formateados()
          return f"Temporizador(Blancas: {tiempos['blanco']}, Negras: {tiempos['negro']}, Activo: {self.turno_activo}, Corriendo: {self.corriendo})"

@@ -7,6 +7,12 @@ from model.temporizador import Temporizador
 from model.jugadores.jugador_humano import JugadorHumano
 from model.jugadores.jugador_cpu import JugadorCPU
 from model.configuracion_juego import ConfiguracionJuego
+from model.piezas.rey import Rey
+from model.piezas.peon import Peon
+from model.piezas.reina import Reina
+from model.piezas.torre import Torre
+from model.piezas.alfil import Alfil
+from model.piezas.caballo import Caballo
 import logging
 from .validador_movimiento import ValidadorMovimiento
 from .ejecutor_movimiento import EjecutorMovimiento
@@ -27,7 +33,7 @@ class Juego:
         La configuración específica se aplica con configurar_nueva_partida.
         """
         self.tablero: Tablero = Tablero() # Crear tablero inicial
-        self.jugadores: List[JugadorHumano] = []
+        self.jugadores: List[JugadorHumano | JugadorCPU] = []
         self.jugador_actual_idx: int = 0
         self.estado: Literal['inicio', 'en_curso', 'jaque', 'jaque_mate', 'tablas', 'ahogado'] = "inicio"
         self.color_activo: Optional[Literal['blanco', 'negro']] = None
@@ -45,6 +51,70 @@ class Juego:
         if not hasattr(self.tablero, 'gestor_historico') or self.tablero.gestor_historico is None:
              self.tablero.gestor_historico = self.historial
     
+    def reiniciar(self):
+        """
+        Reinicia completamente el juego utilizando la configuración existente.
+        Restablece el tablero, historial, piezas capturadas y todos los estados 
+        como si fuera una partida nueva.
+        
+        Returns:
+            bool: True si el reinicio fue exitoso, False en caso contrario.
+        """
+        logger.info("Reiniciando el juego con la configuración existente")
+        
+        if not self.config:
+            logger.error("No hay configuración previa para reiniciar el juego")
+            return False
+            
+        try:
+            # 1. Crear un nuevo tablero (esto borra piezas, posiciones, etc.)
+            self.tablero = Tablero()
+            
+            # 2. Restablecer estado del juego
+            self.estado = "en_curso"
+            self.color_activo = "blanco"
+            self.jugador_actual_idx = 0
+            
+            # 3. Actualizar referencias al tablero en los helpers
+            self.validador.tablero = self.tablero
+            self.ejecutor.tablero = self.tablero
+            self.evaluador.tablero = self.tablero
+            self.historial.tablero = self.tablero
+            
+            # 4. Vincular el nuevo tablero con el gestor de histórico
+            self.tablero.gestor_historico = self.historial
+            
+            # 5. Limpiar historial de movimientos y registrar posición inicial
+            self.historial.reiniciar() # Limpiar todos los históricos (movimientos, posiciones)
+            self.historial.registrar_posicion() # Registrar posición inicial
+            
+            # 6. Limpiar piezas capturadas
+            self.tablero.piezasCapturadas = []
+            
+            # 7. Reiniciar temporizador si existe
+            if self.temporizador:
+                tiempo_base = None
+                tipo_juego = self.config.get('tipo_juego', 'Clásico')
+                
+                if tipo_juego == 'Clásico':
+                    tiempo_base = 600
+                elif tipo_juego == 'Rápido':
+                    tiempo_base = 300
+                elif tipo_juego == 'Blitz':
+                    tiempo_base = 180
+                
+                if tiempo_base:
+                    tiempos = {'blanco': tiempo_base, 'negro': tiempo_base}
+                    self.temporizador.reiniciar(tiempos)
+                    self.temporizador.iniciar_turno(self.color_activo)
+            
+            logger.info("Juego reiniciado exitosamente")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error al reiniciar el juego: {e}", exc_info=True)
+            return False
+    
     def configurar_nueva_partida(self, config: dict):
         """
         Configura el juego para una nueva partida según las opciones dadas.
@@ -52,7 +122,7 @@ class Juego:
 
         Args:
             config: Diccionario con las opciones, ej:
-                    {'tipo_juego': 'Clásico', 'modalidad': 'Humano vs Humano'}
+                    {'tipo_juego': 'Clásico', 'modalidad': 'Humano vs Humano', 'nivel_cpu': 3}
         """
         logger.info("Configurando nueva partida con: %s", config)
         self.config = config
@@ -77,6 +147,7 @@ class Juego:
         
         # 4. Configurar Jugadores
         modalidad = config.get('modalidad', 'Humano vs Humano')
+        nivel_cpu = config.get('nivel_cpu', 1)  # Nivel por defecto si no se especifica
         self.jugadores = [] 
         try:
             if modalidad == 'Humano vs Humano':
@@ -84,18 +155,14 @@ class Juego:
                 self.jugadores.append(JugadorHumano(nombre="Jugador 2", color='negro'))
             elif modalidad == 'Humano vs CPU':
                 self.jugadores.append(JugadorHumano(nombre="Humano", color='blanco'))
-                self.jugadores.append(JugadorCPU(nombre="CPU", color='negro'))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU Nivel {nivel_cpu}", color='negro', nivel=nivel_cpu))
             elif modalidad == 'CPU vs Humano':
-                self.jugadores.append(JugadorCPU(nombre="CPU 1", color='blanco'))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU Nivel {nivel_cpu}", color='blanco', nivel=nivel_cpu))
                 self.jugadores.append(JugadorHumano(nombre="Humano", color='negro'))
-            elif modalidad == 'CPU vs CPU':
-                self.jugadores.append(JugadorCPU(nombre="CPU 1", color='blanco'))
-                self.jugadores.append(JugadorCPU(nombre="CPU 2", color='negro'))
             else:
-                 logger.warning(f"Modalidad '{modalidad}' no reconocida, usando Humano vs Humano.")
-                 self.jugadores.append(JugadorHumano(nombre="Jugador 1", color='blanco'))
-                 self.jugadores.append(JugadorHumano(nombre="Jugador 2", color='negro'))
-            logger.info(f"Jugadores configurados para modalidad: {modalidad}")
+                self.jugadores.append(JugadorCPU(nombre=f"CPU 1 Nivel {nivel_cpu}", color='blanco', nivel=nivel_cpu))
+                self.jugadores.append(JugadorCPU(nombre=f"CPU 2 Nivel {nivel_cpu}", color='negro', nivel=nivel_cpu))
+            logger.info(f"Jugadores configurados para modalidad: {modalidad}, nivel CPU: {nivel_cpu if 'CPU' in modalidad else 'N/A'}")
         except NameError as ne:
             logger.error(f"ERROR: Clase JugadorHumano o JugadorCPU no encontrada: {ne}.")
             self.jugadores = []
@@ -150,14 +217,25 @@ class Juego:
         """
         logger.debug(f"Ejecutando movimiento: {origen} -> {destino} por {self.color_activo}")
         color_jugador_actual = self.color_activo
+        pieza_movida = self.tablero.getPieza(origen) # Obtener la pieza antes de la ejecución
 
         try:
-            # 1. Ejecutar el movimiento usando el Ejecutor
-            # El ejecutor se encarga de: mover pieza, captura, actualizar tablero (enroque, ep, contadores), 
-            # cambiar turno, llamar a actualizarEstadoJuego y registrar posición en historial.
-            # ASUNCIÓN: Por ahora, solo manejamos movimientos normales aquí.
-            # TODO: Determinar cómo se maneja el enroque (¿llamada separada o detectada por ejecutor?)
-            resultado_ejecucion = self.ejecutor.ejecutar_movimiento_normal(origen, destino)
+            # 1. Determinar si es un movimiento de enroque
+            if isinstance(pieza_movida, Rey) and abs(origen[1] - destino[1]) == 2:
+                # Es un intento de enroque
+                tipo_enroque = 'corto' if destino[1] > origen[1] else 'largo'
+                logger.info(f"Detectado intento de enroque {tipo_enroque} para {color_jugador_actual}")
+                # La validación de si el enroque es legal ya debería haber ocurrido
+                # antes de llamar a realizar_movimiento (ej. en el controlador al obtener movimientos legales).
+                # El ejecutor_enroque también tiene sus propias comprobaciones internas.
+                exito_enroque = self.ejecutor.ejecutar_enroque(color_jugador_actual, tipo_enroque)
+                if not exito_enroque:
+                    logger.error(f"Ejecutor.ejecutar_enroque devolvió error para enroque {tipo_enroque} de {color_jugador_actual}")
+                    return 'error'
+                resultado_ejecucion = 'ok' # Si ejecutar_enroque fue exitoso, se considera 'ok'
+            else:
+                # No es enroque, ejecutar movimiento normal
+                resultado_ejecucion = self.ejecutor.ejecutar_movimiento_normal(origen, destino)
 
             if resultado_ejecucion == 'error':
                 logger.error(f"Ejecutor devolvió error para movimiento {origen}->{destino}")
@@ -188,6 +266,113 @@ class Juego:
             # TODO: Estado potencialmente inconsistente. ¿Revertir?
             return 'error'
 
+    def completar_promocion(self, casilla: Tuple[int, int], tipo_pieza: str) -> bool:
+        """
+        Completa la promoción de un peón reemplazándolo con la pieza seleccionada.
+        
+        Args:
+            casilla: Casilla donde está el peón que se debe promover (fila, columna)
+            tipo_pieza: Tipo de pieza a la que se promoverá ('reina', 'torre', 'alfil', 'caballo')
+        
+        Returns:
+            bool: True si la promoción se completó exitosamente, False en caso contrario
+        """
+        try:
+            # 1. Validaciones iniciales
+            if not self.tablero.esPosicionValida(casilla):
+                logger.error(f"Posición de promoción inválida: {casilla}")
+                return False
+            
+            # 2. Obtener el peón que se va a promover
+            peon_a_promover = self.tablero.getPieza(casilla)
+            if peon_a_promover is None:
+                logger.error(f"No hay pieza en la casilla de promoción: {casilla}")
+                return False
+                
+            if not isinstance(peon_a_promover, Peon):
+                logger.error(f"La pieza en {casilla} no es un peón: {type(peon_a_promover).__name__}")
+                return False
+            
+            # 3. Validar que el peón esté en la fila de promoción correcta
+            fila, columna = casilla
+            color_peon = peon_a_promover.color
+            
+            if color_peon == 'blanco' and fila != 7:
+                logger.error(f"Peón blanco no está en fila de promoción (7): fila actual {fila}")
+                return False
+            elif color_peon == 'negro' and fila != 0:
+                logger.error(f"Peón negro no está en fila de promoción (0): fila actual {fila}")
+                return False
+            
+            # 4. Validar tipo de pieza
+            tipos_validos = ['reina', 'torre', 'alfil', 'caballo']
+            if tipo_pieza.lower() not in tipos_validos:
+                logger.error(f"Tipo de pieza inválido para promoción: {tipo_pieza}")
+                return False
+            
+            # 5. Crear la nueva pieza según el tipo seleccionado
+            tipo_normalizado = tipo_pieza.lower()
+            nueva_pieza = None
+            
+            if tipo_normalizado == 'reina':
+                nueva_pieza = Reina(color_peon, casilla, self.tablero)
+            elif tipo_normalizado == 'torre':
+                nueva_pieza = Torre(color_peon, casilla, self.tablero)
+            elif tipo_normalizado == 'alfil':
+                nueva_pieza = Alfil(color_peon, casilla, self.tablero)
+            elif tipo_normalizado == 'caballo':
+                nueva_pieza = Caballo(color_peon, casilla, self.tablero)
+            
+            if nueva_pieza is None:
+                logger.error(f"Error al crear nueva pieza de tipo: {tipo_pieza}")
+                return False
+            
+            # 6. Reemplazar el peón con la nueva pieza en el tablero
+            self.tablero.setPieza(casilla, nueva_pieza)
+            
+            # 7. Actualizar el historial para reflejar la promoción real
+            # Buscar el último movimiento en el historial y actualizarlo con la pieza correcta
+            if hasattr(self.tablero, 'gestor_historico') and self.tablero.gestor_historico:
+                # El último movimiento debería ser el de promoción
+                if self.tablero.gestor_historico.historial_completo:
+                    ultimo_movimiento = self.tablero.gestor_historico.historial_completo[-1]
+                    if ultimo_movimiento.get('es_promocion', False):
+                        # Actualizar la notación del último movimiento para incluir la pieza correcta
+                        # Regenerar la notación SAN con la pieza promoción correcta
+                        ultimo_movimiento['pieza_promocion'] = tipo_normalizado
+                        
+                        # Recrear la notación SAN para el último movimiento
+                        pieza_original = peon_a_promover  # Era un peón
+                        origen_mov = ultimo_movimiento['origen']
+                        destino_mov = ultimo_movimiento['destino']
+                        es_captura = ultimo_movimiento.get('es_captura', False)
+                        es_jaque = ultimo_movimiento.get('es_jaque', False)
+                        es_mate = ultimo_movimiento.get('es_mate', False)
+                        
+                        # Regenerar la notación SAN con la promoción correcta
+                        nueva_notacion = self.tablero.gestor_historico._convertir_a_san(
+                            pieza=pieza_original,
+                            origen=origen_mov,
+                            destino=destino_mov,
+                            es_captura=es_captura,
+                            es_jaque=es_jaque,
+                            es_mate=es_mate,
+                            es_promocion=True,
+                            pieza_promocion=tipo_normalizado
+                        )
+                        
+                        # Actualizar tanto la notación del movimiento como el historial SAN
+                        ultimo_movimiento['notacion_san'] = nueva_notacion
+                        if self.tablero.gestor_historico.historial_san:
+                            self.tablero.gestor_historico.historial_san[-1] = nueva_notacion
+            
+            logger.info(f"Promoción completada: {color_peon} peón en {casilla} promovido a {tipo_normalizado}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error inesperado durante completar_promocion en {casilla} a {tipo_pieza}: {e}", exc_info=True)
+            return False
+
     def getTurnoColor(self) -> Optional[Literal['blanco', 'negro']]:
         """
         Obtiene el color del jugador cuyo turno es.
@@ -195,9 +380,40 @@ class Juego:
         return self.color_activo
 
     def getEstadoJuego(self) -> str:
-        """ Devuelve el estado actual del juego. """
-        return self.estado
+        """
+        Devuelve el estado actual del juego.
+        Reconcilia el estado interno de la clase Juego con el estado del tablero.
         
+        Returns:
+            String con el estado del juego ('en_curso', 'jaque', 'jaque_mate', 'tablas', 'ahogado').
+        """
+        # Para casos normales, devolver el estado del tablero
+        tablero_estado = self.tablero.estado_juego
+        
+        # Si el estado interno es 'ahogado', dar prioridad a este sobre 'tablas'
+        if self.estado == 'ahogado':
+            return 'ahogado'
+        
+        # Si el estado interno es 'jaque_mate', asegurarnos de que coincida con el tablero
+        if self.estado == 'jaque_mate' and tablero_estado != 'jaque_mate':
+            # Sincronizar con el tablero
+            self.tablero.estado_juego = 'jaque_mate'
+            return 'jaque_mate'
+            
+        return tablero_estado
+        
+    def getMotivoTablas(self) -> Optional[str]:
+        """
+        Devuelve el motivo específico de las tablas, si el estado del juego es 'tablas'.
+        
+        Returns:
+            El motivo de las tablas ('ahogado', 'material_insuficiente', 'repeticion', 
+            'regla_50_movimientos') o None si no hay tablas.
+        """
+        if self.tablero.estado_juego == 'tablas':
+            return self.tablero.motivo_tablas
+        return None
+
     def obtener_datos_display(self) -> Dict[str, Dict]:
         """
         Recopila y devuelve los datos necesarios para actualizar la interfaz
@@ -224,18 +440,41 @@ class Juego:
         # Obtener piezas capturadas (usando la lista del tablero)
         piezas_capturadas_blancas = []
         piezas_capturadas_negras = []
-        if hasattr(self.tablero, 'piezasCapturadas'):
-            for pieza in self.tablero.piezasCapturadas:
-                if pieza.get_color() == 'blanco':
-                    piezas_capturadas_blancas.append(pieza)
-                else:
-                    piezas_capturadas_negras.append(pieza)
+        
+        # Asegurarnos de que el tablero tenga el atributo piezasCapturadas
+        if not hasattr(self.tablero, 'piezasCapturadas'):
+            logger.debug("Inicializando atributo piezasCapturadas en el tablero")
+            self.tablero.piezasCapturadas = []
             
+        # Procesar las piezas capturadas si existen
+        if self.tablero.piezasCapturadas:
+            for pieza in self.tablero.piezasCapturadas:
+                try:
+                    # Intentar obtener el color de la pieza (primero con get_color, luego con color)
+                    color_pieza = None
+                    if hasattr(pieza, 'get_color') and callable(pieza.get_color):
+                        color_pieza = pieza.get_color()
+                    elif hasattr(pieza, 'color'):
+                        color_pieza = pieza.color
+                    
+                    # Distribuir la pieza según su color
+                    if color_pieza == 'blanco':
+                        piezas_capturadas_blancas.append(pieza)
+                    elif color_pieza == 'negro':
+                        piezas_capturadas_negras.append(pieza)
+                    else:
+                        logger.warning(f"Pieza capturada con color desconocido: {pieza}")
+                except Exception as e:
+                    logger.error(f"Error al procesar pieza capturada: {e}")
+            
+            # IMPORTANTE: Cada jugador ve las piezas que ha capturado, no las suyas que han sido capturadas
             # Blanco muestra las negras capturadas, Negro muestra las blancas capturadas.
             datos['blanco']['capturadas'] = piezas_capturadas_negras
             datos['negro']['capturadas'] = piezas_capturadas_blancas
+            
+            logger.debug(f"Piezas capturadas: Blancas={len(piezas_capturadas_blancas)}, Negras={len(piezas_capturadas_negras)}")
         else:
-            logger.warning("El objeto Tablero no tiene el atributo 'piezasCapturadas'")
+            logger.debug("No hay piezas capturadas en el tablero")
             datos['blanco']['capturadas'] = []
             datos['negro']['capturadas'] = []
 

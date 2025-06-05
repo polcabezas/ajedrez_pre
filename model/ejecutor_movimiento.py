@@ -60,16 +60,19 @@ class EjecutorMovimiento:
             logger.error(f"[Ejecutor] No hay pieza en la posición origen {posOrigen}.")
             return 'error'
 
+        # Variables para tracking del movimiento
+        es_captura = False
+        es_al_paso = False
+        pieza_capturada = None
+        casilla_captura_ep = None
+
         # Determinar si es captura y si es en passant
         pieza_capturada = self.tablero.getPieza(posDestino)
-        es_captura = False
-        # es_en_passant = False # Not explicitly needed here, determined by condition
-        casilla_captura_ep = None # Casilla donde estaba el peón capturado al paso
-
+        
         # Comprobar si es un movimiento de peón al destino objetivo de 'al paso'
         if isinstance(pieza_movida, Peon) and posDestino == self.tablero.objetivoPeonAlPaso:
             es_captura = True
-            # es_en_passant = True
+            es_al_paso = True
             # El peón capturado está en la misma columna que el destino,
             # pero en la fila de origen del peón que se mueve
             fila_capturada = posOrigen[0]
@@ -79,6 +82,10 @@ class EjecutorMovimiento:
             if pieza_capturada_ep is None or pieza_capturada_ep.color == pieza_movida.color:
                 logger.error(f"[Ejecutor] Intento de captura al paso inválida en {posDestino} (sin peón o peón propio en {casilla_captura_ep})")
                 return 'error' # Should have been caught by validation, but defensive check
+            
+            # Guardar la pieza capturada antes de eliminarla del tablero
+            pieza_capturada = pieza_capturada_ep
+            
             self._capturarPieza(pieza_capturada_ep)
             self.tablero.setPieza(casilla_captura_ep, None)
             logger.debug(f"[Ejecutor] Captura al paso realizada. Peón capturado en {casilla_captura_ep}")
@@ -130,9 +137,33 @@ class EjecutorMovimiento:
 
         # 9. Actualizar historial de posiciones DESPUÉS de cambiar el turno
         self.tablero.gestor_historico.registrar_posicion()
-
+        
         # 10. Actualizar estado del juego AHORA, después del cambio de turno
         self.tablero.actualizarEstadoJuego()
+        
+        # 11. Determinar si el movimiento produjo jaque o jaque mate
+        es_jaque = self.tablero.estado_juego == 'jaque'
+        es_mate = self.tablero.estado_juego == 'jaque_mate'
+        
+        # 12. Registrar el movimiento en notación algebraica
+        if hasattr(self.tablero, 'gestor_historico') and self.tablero.gestor_historico:
+            # Actualmente, no estamos gestionando la promoción específica (defaultea a reina)
+            pieza_promocion = "reina" if es_promocion else None
+            
+            self.tablero.gestor_historico.registrar_movimiento(
+                pieza=pieza_movida, 
+                origen=posOrigen, 
+                destino=posDestino,
+                es_captura=es_captura,
+                pieza_capturada=pieza_capturada,
+                es_jaque=es_jaque,
+                es_mate=es_mate,
+                es_enroque=False,
+                tipo_enroque=None,
+                es_promocion=es_promocion,
+                pieza_promocion=pieza_promocion,
+                es_al_paso=es_al_paso
+            )
 
         # Retornar estado
         if es_promocion:
@@ -213,6 +244,27 @@ class EjecutorMovimiento:
         # Actualizar Estado del Juego AHORA, después del cambio de turno
         self.tablero.actualizarEstadoJuego()
         
+        # Determinar si el movimiento produjo jaque o jaque mate
+        es_jaque = self.tablero.estado_juego == 'jaque'
+        es_mate = self.tablero.estado_juego == 'jaque_mate'
+        
+        # Registrar el movimiento en notación algebraica
+        if hasattr(self.tablero, 'gestor_historico') and self.tablero.gestor_historico:
+            self.tablero.gestor_historico.registrar_movimiento(
+                pieza=rey,
+                origen=rey_pos_origen,
+                destino=rey_pos_destino,
+                es_captura=False,
+                pieza_capturada=None,
+                es_jaque=es_jaque,
+                es_mate=es_mate,
+                es_enroque=True,
+                tipo_enroque=tipo,
+                es_promocion=False,
+                pieza_promocion=None,
+                es_al_paso=False
+            )
+        
         logger.info(f"[Ejecutor] Enroque {color} {tipo} realizado.")
         return True
 
@@ -230,8 +282,22 @@ class EjecutorMovimiento:
             True si la pieza se añade correctamente (no es None), False en caso contrario.
         """
         if pieza is not None:
+            # Asegurarse de que el atributo color está accesible
+            if not hasattr(pieza, 'color'):
+                logger.warning(f"[Ejecutor] La pieza capturada {type(pieza).__name__} no tiene atributo 'color'")
+                if hasattr(pieza, 'get_color') and callable(pieza.get_color):
+                    pieza.color = pieza.get_color()
+                    
+            # Añadir la pieza a la lista de capturadas
             self.tablero.piezasCapturadas.append(pieza)
-            logger.info(f"[Ejecutor] Pieza capturada: {type(pieza).__name__} {pieza.color}")
+            
+            # Loggear información detallada sobre la captura
+            tipo_pieza = type(pieza).__name__
+            color_pieza = pieza.color if hasattr(pieza, 'color') else "color desconocido"
+            posicion = pieza.posicion if hasattr(pieza, 'posicion') else "posición desconocida"
+            
+            logger.info(f"[Ejecutor] Pieza capturada: {tipo_pieza} {color_pieza} en {posicion}. " +
+                        f"Total de piezas capturadas: {len(self.tablero.piezasCapturadas)}")
             return True
         return False
 

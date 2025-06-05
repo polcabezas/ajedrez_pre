@@ -29,9 +29,12 @@ class InterfazAjedrez:
         'casilla_oscura': (150, 150, 150),
         'seleccion': (100, 180, 100, 128),  # Verde semi-transparente
         'movimiento_valido': (100, 100, 180, 128),  # Azul semi-transparente
+        'captura': (220, 80, 80, 128),  # Rojo semi-transparente para capturas
+        'enroque_disponible': (255, 255, 0, 128), # Amarillo semi-transparente para enroque
         'fondo': (240, 240, 240),
         'borde_tablero': (30, 30, 30),
         'panel_lateral': (200, 200, 200),
+        'overlay': (0, 0, 0, 128),  # Negro semi-transparente para overlay
     }
 
     # Constantes de dimensiones
@@ -40,8 +43,9 @@ class InterfazAjedrez:
         'tablero': 560,  # Reducido de 600 a 560
         'casilla': 70,  # Calculado como 560 / 8
         'panel_lateral': 200,  # Ancho de los paneles laterales
-        'boton': (150, 50),  # Tamaño de botones
-        'dropdown': (250, 50),  # Tamaño de menús desplegables
+        'boton': (100, 30),  # Tamaño de botones
+        'dropdown': (450, 30),  # Tamaño de menús desplegables
+        'popup': (400, 300),  # Tamaño del popup de fin de juego
     }
 
     def __init__(self, controlador):
@@ -67,8 +71,8 @@ class InterfazAjedrez:
         fuente_principal = 'SF Pro, Arial' 
         self.fuente_titulo = pygame.font.SysFont(fuente_principal, 48, italic=False, bold=True)
         self.fuente_subtitulo = pygame.font.SysFont(fuente_principal, 24, bold=False, italic=False)
-        self.fuente_normal = pygame.font.SysFont(fuente_principal, 20, bold=False, italic=False)
-        self.fuente_pequeña = pygame.font.SysFont(fuente_principal, 16, bold=False, italic=False)
+        self.fuente_normal = pygame.font.SysFont(fuente_principal, 16, bold=False, italic=False)
+        self.fuente_pequeña = pygame.font.SysFont(fuente_principal, 12, bold=False, italic=False)
         
         # Variables de estado
         self.vista_actual = 'configuracion'  # 'configuracion' o 'tablero'
@@ -77,6 +81,22 @@ class InterfazAjedrez:
         self.mensaje_estado = None # Para mostrar mensajes como Jaque, Mate, etc.
         self.casilla_origen = None
         self.movimientos_validos = []
+        self.casillas_captura = [] # Para guardar las casillas donde se puede capturar una pieza
+        self.casillas_enroque_disponible = [] # Para resaltar el destino del rey en enroque
+        
+        # Estado para el popup de fin de juego
+        self.mostrar_popup_fin_juego = False
+        self.mensaje_fin_juego = ""
+        self.tipo_fin_juego = None  # Puede ser: 'victoria_blanco', 'victoria_negro', 'tablas'
+        
+        # Estado para el popup de promoción de peón
+        self.mostrar_popup_promocion = False
+        self.color_promocion = None  # Color del peón que se está promoviendo
+        self.pieza_promocion_seleccionada = None  # La pieza seleccionada por el usuario
+        
+        # Estado para el botón de desarrollo y su menú
+        self.mostrar_menu_dev = False
+        self.botones_desarrollo = {}
         
         # Estado de los menús desplegables
         self.dropdown_tipo_juego = {
@@ -87,9 +107,21 @@ class InterfazAjedrez:
         
         self.dropdown_modalidad = {
             'abierto': False,
-            'opciones': ['Humano vs Humano', 'Humano vs CPU', 'CPU vs CPU'],
+            'opciones': ['Humano vs Humano', 'Humano vs CPU', 'CPU vs Humano', 'CPU vs CPU'],
             'seleccionado': 'Escoge la modalidad',
         }
+        
+        # Nuevo dropdown para el nivel de dificultad de la CPU
+        self.dropdown_dificultad_cpu = {
+            'abierto': False,
+            'opciones': ['Nivel 1 (Principiante)', 'Nivel 3 (Intermedio)', 'Nivel 5 (Avanzado)', 'Nivel 10 (Experto)'],
+            'seleccionado': 'Selecciona nivel de dificultad',
+            'visible': False  # Solo visible cuando se selecciona una modalidad con CPU
+        }
+
+        # Mensaje de error para la pantalla de configuración
+        self.mensaje_error_config = None
+        self.tiempo_mostrar_error = None
         
         # Elementos de UI
         self.elementos_ui = {}
@@ -97,8 +129,8 @@ class InterfazAjedrez:
         
         # Información de jugadores y temporizador
         self.jugadores = {
-            'blanco': {'nombre': 'Jugador 1', 'tiempo': '00:00', 'piezas_capturadas': []},
-            'negro': {'nombre': 'Jugador 2', 'tiempo': '00:00', 'piezas_capturadas': []},
+            'blanco': {'nombre': 'Jugador 1', 'tiempo': '00:00', 'piezas_capturadas': [], 'color': 'blanco'},
+            'negro': {'nombre': 'Jugador 2', 'tiempo': '00:00', 'piezas_capturadas': [], 'color': 'negro'},
         }
         self.tiempo_acumulado = {'blanco': 0, 'negro': 0} # Tiempo en milisegundos
         self.tiempo_inicio_turno = None # Momento (ticks) en que empezó el turno actual
@@ -115,23 +147,27 @@ class InterfazAjedrez:
         centro_x = self.DIMENSIONES['ventana'][0] // 2
         
         # Posiciones para la vista de configuración (Ajustadas para mejor espaciado)
-        y_inicial = 150 # Empezar un poco más abajo
-        espacio_grande = 80 # Aumentado de 60 a 80 para más padding
-        espacio_medio = 60
-        espacio_pequeño = 25 # Espacio entre etiqueta y su dropdown
-        espacio_dropdown = 80 # Espacio entre los dos dropdowns completos (label+box)
+        y_inicial = 120  # Reducido para empezar más arriba
+        espacio_grande = 60  # Reducido de 80 a 60
+        espacio_medio = 40   # Reducido de 60 a 40
+        espacio_pequeño = 15  # Reducido de 25 a 15
         
         icono_y = y_inicial
         titulo_y = icono_y + espacio_grande
         subtitulo_y = titulo_y + espacio_medio
         
         tipo_juego_label_y = subtitulo_y + espacio_medio
-        tipo_juego_y = tipo_juego_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2 # Centrar dropdown respecto a su Y
+        tipo_juego_y = tipo_juego_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2
         
         modalidad_label_y = tipo_juego_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_medio
         modalidad_y = modalidad_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2
         
-        boton_jugar_y = modalidad_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_grande
+        # Nueva posición para el dropdown de dificultad de CPU
+        dificultad_cpu_label_y = modalidad_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_medio
+        dificultad_cpu_y = dificultad_cpu_label_y + espacio_pequeño + self.DIMENSIONES['dropdown'][1] // 2
+        
+        # Ajustar posición del botón jugar para que esté debajo del nuevo dropdown
+        boton_jugar_y = dificultad_cpu_y + self.DIMENSIONES['dropdown'][1] // 2 + espacio_medio
         
         self.elementos_ui['config'] = {
             'icono_pos': (centro_x, icono_y),
@@ -141,6 +177,8 @@ class InterfazAjedrez:
             'tipo_juego_pos': (centro_x, tipo_juego_y),
             'modalidad_label_pos': (centro_x, modalidad_label_y),
             'modalidad_pos': (centro_x, modalidad_y),
+            'dificultad_cpu_label_pos': (centro_x, dificultad_cpu_label_y),
+            'dificultad_cpu_pos': (centro_x, dificultad_cpu_y),
             'boton_jugar_pos': (centro_x, boton_jugar_y),
         }
         
@@ -149,7 +187,7 @@ class InterfazAjedrez:
             'tablero_pos': (500, 400),  # Bajado de 370 a 400 para más espacio arriba
             'panel_izq_pos': (0, 0),
             'panel_der_pos': (800, 0),
-            'reloj_pos': (500, 40),   # Subido de 50 a 40
+            'reloj_pos': (500, 75),   # Aumentado a 75 para acercar el reloj al tablero
         }
     
     def _cargar_imagenes_piezas(self) -> Dict[str, Dict[str, Optional[pygame.Surface]]]:
@@ -292,12 +330,27 @@ class InterfazAjedrez:
         rect_modalidad_label = modalidad_label.get_rect(center=self.elementos_ui['config']['modalidad_label_pos'])
         self.ventana.blit(modalidad_label, rect_modalidad_label)
         
+        # Verificar si debemos mostrar el nivel de dificultad de CPU
+        modalidad_seleccionada = self.dropdown_modalidad['seleccionado']
+        modalidad_tiene_cpu = any(cpu in modalidad_seleccionada for cpu in ["CPU vs", "vs CPU"])
+        
+        # Actualizar visibilidad del dropdown de dificultad CPU
+        self.dropdown_dificultad_cpu['visible'] = modalidad_tiene_cpu
+        
+        # Mostrar etiqueta de dificultad CPU si es visible
+        if self.dropdown_dificultad_cpu['visible']:
+            dificultad_cpu_label = self.fuente_normal.render("Nivel de dificultad CPU", True, self.COLORES['negro'])
+            rect_dificultad_cpu_label = dificultad_cpu_label.get_rect(center=self.elementos_ui['config']['dificultad_cpu_label_pos'])
+            self.ventana.blit(dificultad_cpu_label, rect_dificultad_cpu_label)
+        
         # --- 2. Determinar qué dropdown está abierto --- 
         dropdown_abierto = None
         if self.dropdown_tipo_juego['abierto']:
             dropdown_abierto = 'tipo_juego'
         elif self.dropdown_modalidad['abierto']:
             dropdown_abierto = 'modalidad'
+        elif self.dropdown_dificultad_cpu['abierto']:
+            dropdown_abierto = 'dificultad_cpu'
             
         # --- 3. Dibujar dropdowns cerrados y botón --- 
         # Dibujar el dropdown de tipo de juego si está cerrado o si ningún dropdown está abierto
@@ -307,6 +360,10 @@ class InterfazAjedrez:
         # Dibujar el dropdown de modalidad si está cerrado o si ningún dropdown está abierto
         if dropdown_abierto != 'modalidad':
              self._dibujar_dropdown('modalidad', self.elementos_ui['config']['modalidad_pos'])
+        
+        # Dibujar el dropdown de dificultad CPU si está cerrado, visible y si ningún dropdown está abierto 
+        if dropdown_abierto != 'dificultad_cpu' and self.dropdown_dificultad_cpu['visible']:
+             self._dibujar_dropdown('dificultad_cpu', self.elementos_ui['config']['dificultad_cpu_pos'])
              
         # Dibujar botón Jugar (se dibuja antes del dropdown abierto)
         self._dibujar_boton("Jugar", self.elementos_ui['config']['boton_jugar_pos'], 
@@ -315,6 +372,48 @@ class InterfazAjedrez:
         # --- 4. Dibujar el dropdown abierto (si existe) al final --- 
         if dropdown_abierto:
             self._dibujar_dropdown(dropdown_abierto, self.elementos_ui['config'][f'{dropdown_abierto}_pos'])
+            
+        # --- 5. Dibujar mensaje de error si existe ---
+        self._dibujar_mensaje_error_config()
+            
+    def _dibujar_mensaje_error_config(self):
+        """
+        Dibuja un mensaje de error en la pantalla de configuración, si existe.
+        El mensaje se muestra en rojo debajo del botón Jugar.
+        """
+        if self.mensaje_error_config:
+            # Verificar si el tiempo de mostrar error ha expirado
+            if self.tiempo_mostrar_error and pygame.time.get_ticks() > self.tiempo_mostrar_error:
+                self.mensaje_error_config = None
+                self.tiempo_mostrar_error = None
+                return
+            
+            # Renderizar mensaje de error en color rojo
+            texto_error = self.fuente_normal.render(self.mensaje_error_config, True, (200, 0, 0))  # Rojo
+            
+            # Posicionar debajo del botón Jugar
+            pos_boton_jugar = self.elementos_ui['config']['boton_jugar_pos']
+            pos_error = (pos_boton_jugar[0], pos_boton_jugar[1] + 40)  # 40px debajo del botón
+            
+            # Centrar horizontalmente
+            rect_error = texto_error.get_rect(center=pos_error)
+            
+            # Dibujar texto
+            self.ventana.blit(texto_error, rect_error)
+            
+    def mostrar_error_config(self, mensaje, duracion=3000):
+        """
+        Establece un mensaje de error para mostrar en la pantalla de configuración.
+        
+        Args:
+            mensaje: Texto del mensaje de error.
+            duracion: Duración en milisegundos que se mostrará el mensaje (por defecto 3 segundos).
+        """
+        self.mensaje_error_config = mensaje
+        self.tiempo_mostrar_error = pygame.time.get_ticks() + duracion
+        
+        # Forzar actualización inmediata para mostrar el error
+        self.actualizar()
     
     def _dibujar_dropdown(self, nombre, posicion):
         """
@@ -347,7 +446,10 @@ class InterfazAjedrez:
         
         # Dibujar texto de la selección actual
         texto_seleccion = self.fuente_normal.render(dropdown['seleccionado'], True, self.COLORES['gris_oscuro'])
-        self.ventana.blit(texto_seleccion, (x + 10, y + alto // 2 - texto_seleccion.get_height() // 2))
+        # Centrar el texto horizontalmente
+        texto_x = x + (ancho - texto_seleccion.get_width()) // 2
+        texto_y = y + alto // 2 - texto_seleccion.get_height() // 2
+        self.ventana.blit(texto_seleccion, (texto_x, texto_y))
         
         # Dibujar flecha del menú
         flecha_puntos = [
@@ -367,8 +469,10 @@ class InterfazAjedrez:
                 
                 # Dibujar texto de la opción
                 texto_opcion = self.fuente_normal.render(opcion, True, self.COLORES['gris_oscuro'])
-                # Añadir un pequeño margen
-                self.ventana.blit(texto_opcion, (x + 10, y_opcion_actual + alto // 2 - texto_opcion.get_height() // 2))
+                # Centrar el texto horizontalmente
+                texto_opcion_x = x + (ancho - texto_opcion.get_width()) // 2
+                texto_opcion_y = y_opcion_actual + alto // 2 - texto_opcion.get_height() // 2
+                self.ventana.blit(texto_opcion, (texto_opcion_x, texto_opcion_y))
                 
                 # Almacenar rectángulos de opciones para detección de clics (opcional, ya se hace en _verificar_clic_dropdown)
                 # rect_opcion = pygame.Rect(x, y_opcion_actual, ancho, alto)
@@ -432,10 +536,18 @@ class InterfazAjedrez:
         
         # Dibujar tablero
         self._dibujar_tablero(tablero)
+        
+        # Dibujar botón de desarrollo
+        self._dibujar_boton_desarrollo()
+        
+        # Dibujar menú de desarrollo si está abierto
+        if self.mostrar_menu_dev:
+            self._dibujar_menu_desarrollo()
     
     def _dibujar_panel_lateral(self, x, jugador):
         """
         Dibuja un panel lateral con información del jugador.
+        Incluye la sección de piezas capturadas con su valor total.
         
         Args:
             x: Posición x del borde izquierdo del panel.
@@ -447,59 +559,195 @@ class InterfazAjedrez:
         
         # Nombre del jugador
         texto_nombre = self.fuente_normal.render(jugador['nombre'], True, self.COLORES['gris_oscuro'])
-        self.ventana.blit(texto_nombre, (x + 10, 50))
+        self.ventana.blit(texto_nombre, (x + 10, 20))
+        
+        # Línea separadora debajo del nombre
+        pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
+                        (x + 5, 45), (x + self.DIMENSIONES['panel_lateral'] - 5, 45), 1)
         
         # --- Dibujar Piezas Capturadas ---
-        y_capturas = 90 # Posición Y inicial para las capturas
-        x_capturas_start = x + 10
-        max_ancho_panel = self.DIMENSIONES['panel_lateral'] - 20 # Margen
-        tamaño_captura = 20 # Tamaño pequeño para los iconos
-        espacio_captura = 5 # Espacio entre iconos
-        x_actual = x_capturas_start
+        # Encabezado de piezas capturadas
+        texto_capturas = self.fuente_normal.render("Piezas capturadas:", True, self.COLORES['gris_oscuro'])
+        self.ventana.blit(texto_capturas, (x + 10, 55))
         
+        # Línea separadora debajo del encabezado
+        pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
+                        (x + 5, 80), (x + self.DIMENSIONES['panel_lateral'] - 5, 80), 1)
+        
+        y_capturas = 90  # Posición Y inicial para las capturas
+        x_capturas_start = x + 10
+        max_ancho_panel = self.DIMENSIONES['panel_lateral'] - 20  # Margen
+        tamaño_captura = 30  # Tamaño para los iconos
+        espacio_captura = 5  # Espacio entre iconos
+        piezas_por_fila = max(1, (max_ancho_panel - espacio_captura) // (tamaño_captura + espacio_captura))
+        
+        # Contadores para agrupar piezas por tipo
+        conteo_tipos = {
+            'peon': 0,
+            'caballo': 0,
+            'alfil': 0,
+            'torre': 0,
+            'reina': 0,
+            'rey': 0
+        }
+        
+        # Valor total de piezas capturadas
+        valor_total = 0
+        
+        # Inicializar y_actual a y_capturas por defecto (para cuando no hay piezas capturadas)
+        y_actual = y_capturas
+        x_actual = x_capturas_start
+        i = 0
+        
+        # Registrar en el log lo que se va a dibujar
         if 'piezas_capturadas' in jugador:
-            # Ordenar por valor (opcional, pero común) - Requiere método getValor() en Pieza
-            # piezas_ordenadas = sorted(jugador['piezas_capturadas'], key=lambda p: p.getValor(), reverse=True)
-            piezas_ordenadas = jugador['piezas_capturadas'] # Sin ordenar por ahora
-            
-            for pieza in piezas_ordenadas:
+            num_piezas = len(jugador['piezas_capturadas']) if jugador['piezas_capturadas'] else 0
+            logger.debug(f"Dibujando {num_piezas} piezas capturadas para {jugador.get('nombre', 'Jugador')} ({jugador.get('color', 'color desconocido')})")
+        
+        if 'piezas_capturadas' in jugador and jugador['piezas_capturadas']:
+            # Contar piezas por tipo y calcular valor total
+            for pieza in jugador['piezas_capturadas']:
                 tipo = type(pieza).__name__.lower()
-                color_pieza = pieza.get_color()
-                imagen_orig = self.imagenes_piezas.get(color_pieza, {}).get(tipo)
+                if tipo in conteo_tipos:
+                    conteo_tipos[tipo] += 1
+                    try:
+                        if hasattr(pieza, 'getValor') and callable(pieza.getValor):
+                            valor_total += pieza.getValor()
+                        else:
+                            # Valores predeterminados si getValor no está disponible
+                            valores_default = {'peon': 1, 'caballo': 3, 'alfil': 3, 'torre': 5, 'reina': 9, 'rey': 0}
+                            valor_total += valores_default.get(tipo, 0)
+                    except Exception as e:
+                        logger.error(f"Error al calcular valor de pieza: {e}")
+            
+            # Dibujar piezas agrupadas por tipo
+            # Ordenar por valor (de mayor a menor)
+            # Utilizamos valores predeterminados para ordenar
+            valores_orden = {'reina': 9, 'torre': 5, 'alfil': 3, 'caballo': 3, 'peon': 1, 'rey': 0}
+            tipos_ordenados = sorted(conteo_tipos.keys(), 
+                                    key=lambda t: valores_orden.get(t, 0), 
+                                    reverse=True)
+            
+            for tipo in tipos_ordenados:
+                cantidad = conteo_tipos[tipo]
+                if cantidad > 0:
+                    # Solo dibujar los tipos que tienen al menos una pieza
+                    # Buscar el color correspondiente (para capturadas, es el color opuesto al jugador)
+                    try:
+                        color_pieza = 'negro' if jugador.get('color', 'blanco') == 'blanco' else 'blanco'
+                        imagen_orig = self.imagenes_piezas.get(color_pieza, {}).get(tipo)
+                        
+                        if imagen_orig:
+                            imagen_captura = pygame.transform.smoothscale(imagen_orig, (tamaño_captura, tamaño_captura))
+                            
+                            # Cambiar de fila si no hay espacio
+                            if i % piezas_por_fila == 0 and i > 0:
+                                x_actual = x_capturas_start
+                                y_actual += tamaño_captura + espacio_captura
+                            
+                            # Dibujar la pieza
+                            self.ventana.blit(imagen_captura, (x_actual, y_actual))
+                            
+                            # Si hay más de una del mismo tipo, mostrar un contador
+                            if cantidad > 1:
+                                texto_contador = self.fuente_pequeña.render(f"x{cantidad}", True, self.COLORES['negro'])
+                                self.ventana.blit(texto_contador, (x_actual + tamaño_captura - 15, y_actual + tamaño_captura - 15))
+                            
+                            x_actual += tamaño_captura + espacio_captura
+                            i += 1
+                        else:
+                            logger.warning(f"No se encontró imagen para pieza capturada: {tipo} {color_pieza}")
+                    except Exception as e:
+                        logger.error(f"Error al dibujar pieza capturada de tipo {tipo}: {e}")
+        
+        # Mostrar valor total de captura
+        y_valor = y_actual + tamaño_captura + 15
+        texto_valor = self.fuente_normal.render(f"Valor total: {valor_total}", True, self.COLORES['gris_oscuro'])
+        self.ventana.blit(texto_valor, (x + 10, y_valor))
+        
+        # --- Dibujar Historial de Movimientos (en ambos paneles) ---
+        self._dibujar_historial_movimientos(x, y_valor + 25, jugador.get('color', 'blanco'))
+            
+    def _dibujar_historial_movimientos(self, x, y_inicial, color_jugador):
+        """
+        Dibuja el historial de movimientos específico para cada jugador.
+        En el panel izquierdo se muestran los movimientos del jugador blanco,
+        en el panel derecho los del jugador negro.
+        
+        Args:
+            x: Posición x donde comenzar a dibujar.
+            y_inicial: Posición y donde comenzar a dibujar.
+            color_jugador: Color del jugador ('blanco' o 'negro').
+        """
+        # Rectángulo para el historial
+        ancho_historial = self.DIMENSIONES['panel_lateral'] - 20  # Margen
+        alto_historial = 200  # Alto fijo para el área de historial
+        x_historial = x + 10
+        
+        # Encabezado del historial
+        texto_historial = self.fuente_normal.render("Histórico de movimientos:", True, self.COLORES['gris_oscuro'])
+        self.ventana.blit(texto_historial, (x_historial, y_inicial))
+        
+        # Línea separadora debajo del encabezado
+        pygame.draw.line(self.ventana, self.COLORES['gris_oscuro'], 
+                       (x + 5, y_inicial + 25), (x + self.DIMENSIONES['panel_lateral'] - 5, y_inicial + 25), 1)
+        
+        # Obtener el historial de movimientos del tablero
+        tablero = self.controlador.obtener_tablero()
+        if not tablero or not hasattr(tablero, 'gestor_historico'):
+            return
+        
+        # Filtrar movimientos para mostrar solo los del color correspondiente al panel
+        movimientos_filtrados = []
+        try:
+            if hasattr(tablero, 'gestor_historico') and tablero.gestor_historico:
+                for idx, mov in enumerate(tablero.gestor_historico.historial_completo):
+                    if mov['color'] == color_jugador:
+                        num = idx // 2 + 1  # Convertir a número de movimiento (1, 2, 3...)
+                        movimientos_filtrados.append({
+                            'numero': num,
+                            'notacion_san': mov['notacion_san'],
+                            'color': mov['color'],
+                            'es_enroque': mov.get('es_enroque', False),
+                        })
+        except Exception as e:
+            logger.error(f"Error al procesar historial de movimientos: {e}")
+            
+        # Mostrar los movimientos en formato simple
+        y_offset = 35  # Margen inicial desde el encabezado
+        for idx, mov in enumerate(movimientos_filtrados):
+            numero = mov['numero']
+            notacion = mov['notacion_san']
+            
+            # Formatear como se muestra en la imagen
+            if mov.get('es_enroque', False) and 'O-O' in notacion and '-O' not in notacion:
+                texto_mov = f"{numero}. O-O (Enroque corto)"
+            else:
+                texto_mov = f"{numero}. {notacion}"
                 
-                if imagen_orig:
-                    imagen_captura = pygame.transform.smoothscale(imagen_orig, (tamaño_captura, tamaño_captura))
-                    # Comprobar si cabe en la línea actual
-                    if x_actual + tamaño_captura > x + max_ancho_panel:
-                         # Pasar a la siguiente línea
-                         x_actual = x_capturas_start
-                         y_capturas += tamaño_captura + espacio_captura
-                         
-                    self.ventana.blit(imagen_captura, (x_actual, y_capturas))
-                    x_actual += tamaño_captura + espacio_captura
-                else:
-                    logger.warning(f"No se encontró imagen para pieza capturada: {tipo} {color_pieza}")
-                    # Dibujar un placeholder? 
-                    # pygame.draw.rect(self.ventana, (100,100,100), (x_actual, y_capturas, tamaño_captura, tamaño_captura), 1)
-                    # x_actual += tamaño_captura + espacio_captura
-    
+            mov_surf = self.fuente_pequeña.render(texto_mov, True, self.COLORES['gris_oscuro'])
+            self.ventana.blit(mov_surf, (x_historial, y_inicial + y_offset))
+            y_offset += self.fuente_pequeña.get_height() + 5
+
     def _dibujar_indicador_turno(self):
         """ Dibuja un texto indicando de quién es el turno. """
-        texto = f"Turno de: {self.turno_actual.capitalize()}"
-        color_texto = self.COLORES['gris_oscuro']
-        fuente_turno = self.fuente_normal
-        
-        texto_surf = fuente_turno.render(texto, True, color_texto)
-        
-        # Posicionar debajo del reloj
-        reloj_centro_x, reloj_centro_y = self.elementos_ui['tablero']['reloj_pos']
-        # Asumimos altura del reloj (aproximada por fuente + padding)
-        altura_reloj_aprox = fuente_turno.get_height() + 20 
-        pos_y = reloj_centro_y + altura_reloj_aprox // 2 + 15 # Espacio debajo del reloj
-        pos_x = reloj_centro_x
-        
-        texto_rect = texto_surf.get_rect(center=(pos_x, pos_y))
-        self.ventana.blit(texto_surf, texto_rect)
+        # Solo mostrar el indicador de turno si no hay un mensaje de estado activo
+        if not self.mensaje_estado:
+            texto = f"Turno de: {self.turno_actual.capitalize()}"
+            color_texto = self.COLORES['negro']
+            # Usar fuente normal en lugar de subtitulo para reducir tamaño
+            fuente_turno = self.fuente_normal
+            
+            texto_surf = fuente_turno.render(texto, True, color_texto)
+            
+            # Posicionar más abajo pero todavía separado del timer
+            centro_x = self.DIMENSIONES['ventana'][0] // 2
+            pos_y = 30 # Ajustado a 30 para bajar el mensaje
+            
+            texto_rect = texto_surf.get_rect(center=(centro_x, pos_y))
+            
+            # Dibujar solo el texto, sin fondo ni borde
+            self.ventana.blit(texto_surf, texto_rect)
 
     def _dibujar_mensaje_estado(self):
         """ Dibuja el mensaje de estado actual si existe. """
@@ -511,23 +759,18 @@ class InterfazAjedrez:
             # elif "Jaque" in self.mensaje_estado:
             #     color_texto = (200, 100, 0) # Naranja oscuro
                 
-            fuente_mensaje = self.fuente_subtitulo # Usar fuente más grande
+            # Usar fuente normal en lugar de subtitulo para hacer texto más pequeño
+            fuente_mensaje = self.fuente_normal
             
             texto_surf = fuente_mensaje.render(self.mensaje_estado, True, color_texto)
             
-            # Posicionar en la parte superior central, encima del reloj/turno
+            # Posicionar más abajo pero todavía separado del timer
             centro_x = self.DIMENSIONES['ventana'][0] // 2
-            pos_y = 25 # Más arriba
+            pos_y = 30 # Ajustado a 30 para bajar el mensaje
             
             texto_rect = texto_surf.get_rect(center=(centro_x, pos_y))
             
-            # Fondo semi-transparente opcional para legibilidad
-            fondo_rect = texto_rect.inflate(20, 10) # Añadir padding
-            fondo_surf = pygame.Surface(fondo_rect.size, pygame.SRCALPHA)
-            fondo_surf.fill((220, 220, 220, 180)) # Gris claro semi-transparente
-            self.ventana.blit(fondo_surf, fondo_rect)
-            
-            # Dibujar texto encima del fondo
+            # Dibujar solo el texto, sin fondo ni borde
             self.ventana.blit(texto_surf, texto_rect)
 
     def _dibujar_reloj(self):
@@ -545,15 +788,16 @@ class InterfazAjedrez:
         color_texto = self.COLORES['gris_oscuro']
         color_fondo = self.COLORES['gris_claro']
         fuente_reloj = self.fuente_normal # Usar fuente más pequeña
-        padding = 10 # Espacio entre el texto y el borde del fondo
+        padding_horizontal = 15 # Aumentado de 10 a 15
+        padding_vertical = 12   # Aumentado para más espacio vertical
 
         # Renderizar el texto para obtener su tamaño
         texto_surf = fuente_reloj.render(texto_tiempo, True, color_texto)
         texto_rect = texto_surf.get_rect()
 
         # Calcular tamaño y posición del rectángulo de fondo
-        fondo_ancho = texto_rect.width + 2 * padding
-        fondo_alto = texto_rect.height + 2 * padding
+        fondo_ancho = texto_rect.width + 2 * padding_horizontal
+        fondo_alto = texto_rect.height + 2 * padding_vertical
         pos_centro = self.elementos_ui['tablero']['reloj_pos']
         fondo_rect = pygame.Rect(0, 0, fondo_ancho, fondo_alto)
         fondo_rect.center = pos_centro
@@ -607,8 +851,17 @@ class InterfazAjedrez:
                     pygame.draw.rect(self.ventana, self.COLORES['seleccion'], 
                                     (x, y, tamaño_casilla, tamaño_casilla))
                 
-                # Resaltar movimientos válidos
-                if (fila, columna) in self.movimientos_validos:
+                # Resaltar casillas de enroque disponible (amarillo)
+                elif (fila, columna) in self.casillas_enroque_disponible:
+                    pygame.draw.rect(self.ventana, self.COLORES['enroque_disponible'],
+                                     (x, y, tamaño_casilla, tamaño_casilla))
+
+                # Resaltar casillas de captura (piezas rivales que pueden ser tomadas)
+                elif (fila, columna) in self.casillas_captura:
+                    pygame.draw.rect(self.ventana, self.COLORES['captura'], 
+                                    (x, y, tamaño_casilla, tamaño_casilla))
+                # Resaltar movimientos válidos normales (sin captura)
+                elif (fila, columna) in self.movimientos_validos:
                     pygame.draw.rect(self.ventana, self.COLORES['movimiento_valido'], 
                                     (x, y, tamaño_casilla, tamaño_casilla))
                 
@@ -670,12 +923,13 @@ class InterfazAjedrez:
         """
         Gestiona el cambio de turno en el temporizador.
         Acumula el tiempo del jugador anterior y reinicia el contador para el nuevo.
+        También actualiza los colores de los jugadores si es necesario.
 
         Args:
             nuevo_turno: El color del jugador cuyo turno comienza ('blanco' o 'negro').
         """
         if not self.temporizador_activo or self.tiempo_inicio_turno is None:
-            print("[Interfaz Warning] Se intentó cambiar turno sin temporizador activo.")
+            logger.warning("[Interfaz] Se intentó cambiar turno sin temporizador activo.")
             # Aún así, actualizamos el turno visualmente
             self.turno_actual = nuevo_turno
             return
@@ -685,10 +939,15 @@ class InterfazAjedrez:
         
         # Acumular tiempo para el jugador que acaba de mover
         self.tiempo_acumulado[self.turno_actual] += tiempo_transcurrido
-        print(f"[Interfaz] Tiempo acumulado {self.turno_actual}: {self.tiempo_acumulado[self.turno_actual]/1000:.2f}s") # Log
+        logger.debug(f"[Interfaz] Tiempo acumulado {self.turno_actual}: {self.tiempo_acumulado[self.turno_actual]/1000:.2f}s")
         
         # Actualizar al nuevo turno
         self.turno_actual = nuevo_turno
+        
+        # Asegurar que los jugadores tengan sus colores establecidos
+        # Esto es importante para mostrar correctamente las piezas capturadas
+        self.jugadores['blanco']['color'] = 'blanco'
+        self.jugadores['negro']['color'] = 'negro'
         
         # Registrar el inicio del nuevo turno
         self.tiempo_inicio_turno = pygame.time.get_ticks()
@@ -740,6 +999,12 @@ class InterfazAjedrez:
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 return False
+            elif evento.type == pygame.USEREVENT + 1:
+                # Este es nuestro evento de respaldo para CPU
+                if self.controlador and hasattr(self.controlador, 'tiempo_movimiento_cpu'):
+                    # Solo procesar si aún está programado
+                    if self.controlador.tiempo_movimiento_cpu is not None:
+                        self.controlador.tiempo_movimiento_cpu = pygame.time.get_ticks()
             
             # Eventos para la vista de configuración
             if self.vista_actual == 'configuracion':
@@ -749,7 +1014,23 @@ class InterfazAjedrez:
             # Eventos para la vista del tablero
             elif self.vista_actual == 'tablero':
                 if evento.type == pygame.MOUSEBUTTONDOWN:
-                    self._manejar_clic_tablero(evento.pos)
+                    # Si el popup de promoción está abierto, manejarlo primero
+                    if self.mostrar_popup_promocion:
+                        self._manejar_clic_popup_promocion(evento.pos)
+                    # Si el popup de fin de juego está abierto, manejarlo
+                    elif self.mostrar_popup_fin_juego:
+                        self._manejar_clic_popup_fin_juego(evento.pos)
+                    # Si el menú de desarrollo está abierto, manejarlo
+                    elif self.mostrar_menu_dev:
+                        self._manejar_clic_menu_desarrollo(evento.pos)
+                    # Verificar clic en el botón de desarrollo
+                    elif self._es_clic_en_boton_desarrollo(evento.pos):
+                        self.mostrar_menu_dev = True
+                    # Verificar si se hizo clic en el historial de movimientos
+                    elif self._es_clic_en_historial(evento.pos):
+                        self._manejar_clic_historial(evento.pos)
+                    else:
+                        self._manejar_clic_tablero(evento.pos)
                 elif evento.type == pygame.MOUSEMOTION and self.pieza_seleccionada:
                     # Manejar arrastre de piezas (implementar si se desea)
                     pass
@@ -778,6 +1059,9 @@ class InterfazAjedrez:
         elif self.dropdown_modalidad['abierto']:
             dropdown_abierto_nombre = 'modalidad'
             dropdown_abierto_obj = self.dropdown_modalidad
+        elif self.dropdown_dificultad_cpu['abierto']:
+            dropdown_abierto_nombre = 'dificultad_cpu'
+            dropdown_abierto_obj = self.dropdown_dificultad_cpu
 
         if dropdown_abierto_nombre:
             # Calcular el rectángulo completo del dropdown abierto (cabecera + opciones)
@@ -806,9 +1090,13 @@ class InterfazAjedrez:
                 datos_boton['accion']()
                 return # El clic ha sido manejado por el botón
         
-        # Verificar clics en las cabeceras de los dropdowns (ambos están cerrados)
+        # Verificar clics en las cabeceras de los dropdowns (todos están cerrados)
         self._verificar_clic_dropdown('tipo_juego', pos) 
-        self._verificar_clic_dropdown('modalidad', pos) # Ahora es seguro verificar ambos
+        self._verificar_clic_dropdown('modalidad', pos)
+        
+        # Solo verificar el dropdown de dificultad CPU si es visible
+        if self.dropdown_dificultad_cpu['visible']:
+            self._verificar_clic_dropdown('dificultad_cpu', pos)
     
     def _verificar_clic_dropdown(self, nombre, pos):
         """
@@ -816,10 +1104,15 @@ class InterfazAjedrez:
         y maneja el evento.
         
         Args:
-            nombre: Nombre del menú ('tipo_juego' o 'modalidad').
+            nombre: Nombre del menú ('tipo_juego', 'modalidad' o 'dificultad_cpu').
             pos: Posición (x, y) del clic.
         """
         dropdown = getattr(self, f'dropdown_{nombre}')
+        
+        # Si es el dropdown de dificultad CPU y no está visible, ignorar
+        if nombre == 'dificultad_cpu' and not dropdown['visible']:
+            return
+            
         ancho, alto = self.DIMENSIONES['dropdown']
         centro_x, centro_y = self.elementos_ui['config'][f'{nombre}_pos']
         
@@ -832,11 +1125,12 @@ class InterfazAjedrez:
         if rect_cabecera.collidepoint(pos):
             # Alternar estado abierto/cerrado
             dropdown['abierto'] = not dropdown['abierto']
-            # Si se acaba de abrir este, cerrar el otro
+            # Si se acaba de abrir este, cerrar los otros
             if dropdown['abierto']:
-                otro_nombre = 'modalidad' if nombre == 'tipo_juego' else 'tipo_juego'
-                otro_dropdown = getattr(self, f'dropdown_{otro_nombre}')
-                otro_dropdown['abierto'] = False
+                for otro_nombre in ['tipo_juego', 'modalidad', 'dificultad_cpu']:
+                    if otro_nombre != nombre:
+                        otro_dropdown = getattr(self, f'dropdown_{otro_nombre}')
+                        otro_dropdown['abierto'] = False
             return # Clic manejado
         
         # Si el menú está abierto, verificar clic en las opciones
@@ -847,8 +1141,12 @@ class InterfazAjedrez:
                 if rect_opcion.collidepoint(pos):
                     dropdown['seleccionado'] = opcion
                     dropdown['abierto'] = False # Cerrar al seleccionar
-                    # Aquí podrías llamar a una función del controlador si la selección debe tener efecto inmediato
-                    # self.controlador.actualizar_configuracion(nombre, opcion)
+                    
+                    # Si cambia la modalidad, actualizar la visibilidad del dropdown de dificultad CPU
+                    if nombre == 'modalidad':
+                        modalidad_tiene_cpu = any(cpu in opcion for cpu in ["CPU vs", "vs CPU"])
+                        self.dropdown_dificultad_cpu['visible'] = modalidad_tiene_cpu
+                    
                     return # Clic manejado
             
             # Si el clic fue dentro del área abierta pero no en una opción ni en la cabecera,
@@ -896,6 +1194,13 @@ class InterfazAjedrez:
             # Actualizar los strings de tiempo ANTES de dibujar
             self._actualizar_display_tiempos()
             self.dibujar_pantalla_tablero(tablero)
+            
+            # Si hay un popup de promoción que mostrar, dibujarlo encima
+            if self.mostrar_popup_promocion:
+                self._dibujar_popup_promocion()
+            # Si hay un popup de fin de juego que mostrar, dibujarlo encima
+            elif self.mostrar_popup_fin_juego:
+                self._dibujar_popup_fin_juego()
         
         pygame.display.flip()
     
@@ -922,11 +1227,43 @@ class InterfazAjedrez:
         
         Returns:
             Dict: Diccionario con la configuración seleccionada.
+            None: Si no se ha seleccionado alguna opción requerida.
         """
-        return {
-            'tipo_juego': self.dropdown_tipo_juego['seleccionado'],
-            'modalidad': self.dropdown_modalidad['seleccionado']
-        } 
+        # Valores por defecto de los dropdowns
+        tipo_juego_default = 'Escoge el tipo de juego'
+        modalidad_default = 'Escoge la modalidad'
+        dificultad_cpu_default = 'Selecciona nivel de dificultad'
+        
+        # Verificar si los dropdowns requeridos tienen selecciones válidas
+        tipo_juego_seleccionado = self.dropdown_tipo_juego['seleccionado']
+        modalidad_seleccionada = self.dropdown_modalidad['seleccionado']
+        
+        # Si alguno de los principales tiene el valor por defecto, retornar None
+        if tipo_juego_seleccionado == tipo_juego_default or modalidad_seleccionada == modalidad_default:
+            return None
+            
+        # Verificar si se necesita el nivel de dificultad de CPU
+        if any(cpu in modalidad_seleccionada for cpu in ["CPU vs", "vs CPU"]):
+            dificultad_cpu_seleccionada = self.dropdown_dificultad_cpu['seleccionado']
+            if dificultad_cpu_seleccionada == dificultad_cpu_default:
+                return None  # Si se requiere nivel CPU pero no se ha seleccionado
+                
+            # Extraer el número de nivel de la selección (e.g., "Nivel 3 (Intermedio)" -> 3)
+            nivel_cpu = int(dificultad_cpu_seleccionada.split()[1].split('(')[0])
+        else:
+            nivel_cpu = None  # No se necesita nivel CPU para Humano vs Humano
+        
+        # Crear y retornar el diccionario de configuración
+        config = {
+            'tipo_juego': tipo_juego_seleccionado,
+            'modalidad': modalidad_seleccionada
+        }
+        
+        # Añadir nivel de CPU si es aplicable
+        if nivel_cpu is not None:
+            config['nivel_cpu'] = nivel_cpu
+            
+        return config
 
     def mostrar_mensaje_estado(self, texto: Optional[str]):
         """
@@ -937,14 +1274,498 @@ class InterfazAjedrez:
         # Podríamos añadir lógica para que mensajes no persistentes desaparezcan
         # después de un tiempo, pero por ahora se mantienen hasta el siguiente cambio.
     
-    def obtener_configuracion(self):
+    def mostrar_fin_de_juego(self, resultado, motivo=None):
         """
-        Obtiene la configuración seleccionada por el usuario.
+        Muestra el popup de fin de juego con el resultado correspondiente.
+        
+        Args:
+            resultado: Tipo de resultado ('victoria_blanco', 'victoria_negro', 'tablas')
+            motivo: Opcional, motivo específico del fin de juego (por ejemplo, 'jaque_mate', 'ahogado', etc.)
+        """
+        self.mostrar_popup_fin_juego = True
+        self.tipo_fin_juego = resultado
+        
+        # Detener el temporizador cuando el juego termina
+        self.detener_temporizador()
+        
+        # Determinar el mensaje según el resultado y motivo
+        if resultado == 'victoria_blanco':
+            self.mensaje_fin_juego = f"¡Gana el {self.jugadores['blanco']['nombre']}!"
+        elif resultado == 'victoria_negro':
+            self.mensaje_fin_juego = f"¡Gana el {self.jugadores['negro']['nombre']}!"
+        elif resultado == 'tablas':
+            if motivo == 'ahogado':
+                self.mensaje_fin_juego = "¡Tablas por ahogado!"
+            elif motivo == 'material_insuficiente':
+                self.mensaje_fin_juego = "¡Tablas por material insuficiente!"
+            elif motivo == 'repeticion':
+                self.mensaje_fin_juego = "¡Tablas por repetición!"
+            elif motivo == 'regla_50_movimientos':
+                self.mensaje_fin_juego = "¡Tablas por regla de 50 movimientos!"
+            else:
+                self.mensaje_fin_juego = "¡Tablas!"
+        
+        # Actualizar la pantalla para mostrar el popup inmediatamente
+        self.actualizar(self.controlador.obtener_tablero())
+    
+    def mostrar_promocion_peon(self, color):
+        """
+        Muestra el popup de promoción de peón para que el usuario elija la pieza.
+        
+        Args:
+            color: Color del peón que se está promoviendo ('blanco' o 'negro').
+        """
+        self.mostrar_popup_promocion = True
+        self.color_promocion = color
+        self.pieza_promocion_seleccionada = None
+        
+        # Actualizar la pantalla para mostrar el popup inmediatamente
+        self.actualizar(self.controlador.obtener_tablero())
+    
+    def obtener_promocion_seleccionada(self):
+        """
+        Obtiene la pieza seleccionada para la promoción del peón.
         
         Returns:
-            Dict: Diccionario con la configuración seleccionada.
+            str: Tipo de pieza seleccionada ('reina', 'torre', 'alfil', 'caballo') o None si no se ha seleccionado.
         """
-        return {
-            'tipo_juego': self.dropdown_tipo_juego['seleccionado'],
-            'modalidad': self.dropdown_modalidad['seleccionado']
-        } 
+        return self.pieza_promocion_seleccionada
+    
+    def cerrar_popup_promocion(self):
+        """
+        Cierra el popup de promoción y limpia el estado relacionado.
+        """
+        self.mostrar_popup_promocion = False
+        self.color_promocion = None
+        self.pieza_promocion_seleccionada = None
+        
+    def _dibujar_popup_fin_juego(self):
+        """
+        Dibuja el popup de fin de juego con el mensaje de resultado y botones.
+        El tamaño se adapta automáticamente al contenido.
+        """
+        # 1. Dibujar overlay semi-transparente
+        overlay = pygame.Surface(self.DIMENSIONES['ventana'], pygame.SRCALPHA)
+        overlay.fill(self.COLORES['overlay'])
+        self.ventana.blit(overlay, (0, 0))
+        
+        # 2. Calcular tamaños de los elementos para adaptar el popup
+        titulo_texto = self.fuente_subtitulo.render("Final del Juego", True, self.COLORES['negro'])
+        mensaje_texto = self.fuente_titulo.render(self.mensaje_fin_juego, True, self.COLORES['negro'])
+        texto_revancha = self.fuente_normal.render("Revancha", True, self.COLORES['blanco'])
+        texto_menu = self.fuente_normal.render("Menú Principal", True, self.COLORES['negro'])
+        
+        # Calcular ancho mínimo basado en el texto más ancho
+        padding_horizontal = 40  # Padding a cada lado
+        ancho_minimo = 400  # Ancho mínimo por defecto
+        ancho_titulo = titulo_texto.get_width() + padding_horizontal*2
+        ancho_mensaje = mensaje_texto.get_width() + padding_horizontal*2
+        ancho_botones = max(160, texto_revancha.get_width() + 40, texto_menu.get_width() + 40)  # Botones de al menos 160px
+        
+        # El popup debe ser al menos tan ancho como el elemento más ancho
+        popup_ancho = max(ancho_minimo, ancho_titulo, ancho_mensaje, ancho_botones + padding_horizontal*2)
+        
+        # Calcular alto basado en el contenido
+        padding_vertical = 30  # Padding vertical entre elementos
+        padding_mensaje_botones = 60  # Padding adicional entre el mensaje y los botones
+        alto_titulo = titulo_texto.get_height()
+        alto_mensaje = mensaje_texto.get_height()
+        alto_botones = 40 * 2 + 20  # Dos botones de 40px con 20px entre ellos
+        
+        # Calcular alto total con padding adecuado
+        popup_alto = padding_vertical + alto_titulo + padding_vertical + alto_mensaje + padding_vertical + padding_mensaje_botones + alto_botones + padding_vertical
+        
+        # 3. Calcular posición del popup (centrado)
+        ventana_ancho, ventana_alto = self.DIMENSIONES['ventana']
+        popup_x = (ventana_ancho - popup_ancho) // 2
+        popup_y = (ventana_alto - popup_alto) // 2 - 20  # Un poco más arriba del centro exacto
+        
+        # 4. Dibujar fondo del popup
+        popup_rect = pygame.Rect(popup_x, popup_y, popup_ancho, popup_alto)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], popup_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['gris_oscuro'], popup_rect, 2)  # Borde
+        
+        # 5. Dibujar título "Final del Juego"
+        titulo_rect = titulo_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical + alto_titulo // 2))
+        self.ventana.blit(titulo_texto, titulo_rect)
+        
+        # 6. Dibujar mensaje de resultado
+        mensaje_rect = mensaje_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical*2 + alto_titulo + alto_mensaje // 2))
+        self.ventana.blit(mensaje_texto, mensaje_rect)
+        
+        # 7. Dibujar botones
+        # Posición Y para los botones, añadiendo el padding extra
+        botones_y = popup_y + padding_vertical*3 + alto_titulo + alto_mensaje + padding_mensaje_botones
+        
+        # Botón "Revancha"
+        boton_revancha_rect = pygame.Rect(0, 0, ancho_botones, 40)
+        boton_revancha_rect.center = (popup_x + popup_ancho // 2, botones_y)
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], boton_revancha_rect)
+        texto_revancha_rect = texto_revancha.get_rect(center=boton_revancha_rect.center)
+        self.ventana.blit(texto_revancha, texto_revancha_rect)
+        
+        # Botón "Menú Principal"
+        boton_menu_rect = pygame.Rect(0, 0, ancho_botones, 40)
+        boton_menu_rect.center = (popup_x + popup_ancho // 2, botones_y + 60)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], boton_menu_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], boton_menu_rect, 2)  # Borde
+        texto_menu_rect = texto_menu.get_rect(center=boton_menu_rect.center)
+        self.ventana.blit(texto_menu, texto_menu_rect)
+        
+        # Guardar referencias a los rectángulos de los botones para detectar clics
+        self.elementos_ui['popup_fin_juego'] = {
+            'revancha': boton_revancha_rect,
+            'menu_principal': boton_menu_rect
+        }
+    
+    def _dibujar_popup_promocion(self):
+        """
+        Dibuja el popup de promoción de peón con las 4 opciones de piezas.
+        Sigue el mismo estilo que el popup de fin de juego.
+        """
+        # 1. Dibujar overlay semi-transparente
+        overlay = pygame.Surface(self.DIMENSIONES['ventana'], pygame.SRCALPHA)
+        overlay.fill(self.COLORES['overlay'])
+        self.ventana.blit(overlay, (0, 0))
+        
+        # 2. Calcular tamaños de los elementos
+        titulo_texto = self.fuente_subtitulo.render("Promoción de Peón", True, self.COLORES['negro'])
+        subtitulo_texto = self.fuente_titulo.render("Escoge una pieza", True, self.COLORES['negro'])
+        
+        # Dimensiones de las piezas y el popup
+        tamaño_pieza = 80  # Tamaño de cada icono de pieza
+        espacio_entre_piezas = 20  # Espacio entre piezas
+        padding_horizontal = 40
+        padding_vertical = 30
+        
+        # Calcular ancho del popup basado en las 4 piezas
+        ancho_piezas = 4 * tamaño_pieza + 3 * espacio_entre_piezas
+        ancho_textos = max(titulo_texto.get_width(), subtitulo_texto.get_width())
+        popup_ancho = max(ancho_piezas, ancho_textos) + padding_horizontal * 2
+        
+        # Calcular alto del popup
+        alto_titulo = titulo_texto.get_height()
+        alto_subtitulo = subtitulo_texto.get_height()
+        popup_alto = padding_vertical + alto_titulo + padding_vertical + alto_subtitulo + padding_vertical + tamaño_pieza + padding_vertical
+        
+        # 3. Calcular posición del popup (centrado)
+        ventana_ancho, ventana_alto = self.DIMENSIONES['ventana']
+        popup_x = (ventana_ancho - popup_ancho) // 2
+        popup_y = (ventana_alto - popup_alto) // 2 - 20
+        
+        # 4. Dibujar fondo del popup
+        popup_rect = pygame.Rect(popup_x, popup_y, popup_ancho, popup_alto)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], popup_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['gris_oscuro'], popup_rect, 2)  # Borde
+        
+        # 5. Dibujar título "Promoción de Peón"
+        titulo_rect = titulo_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical + alto_titulo // 2))
+        self.ventana.blit(titulo_texto, titulo_rect)
+        
+        # 6. Dibujar subtítulo "Escoge una pieza"
+        subtitulo_rect = subtitulo_texto.get_rect(center=(popup_x + popup_ancho // 2, popup_y + padding_vertical*2 + alto_titulo + alto_subtitulo // 2))
+        self.ventana.blit(subtitulo_texto, subtitulo_rect)
+        
+        # 7. Dibujar las 4 opciones de piezas
+        y_piezas = popup_y + padding_vertical*3 + alto_titulo + alto_subtitulo
+        
+        # Calcular posición inicial x para centrar las 4 piezas
+        x_inicial = popup_x + (popup_ancho - ancho_piezas) // 2
+        
+        # Lista de tipos de piezas en el orden: Reina, Torre, Alfil, Caballo
+        tipos_piezas = ['reina', 'torre', 'alfil', 'caballo']
+        
+        # Guardar referencias a los rectángulos para detectar clics
+        self.elementos_ui['popup_promocion'] = {}
+        
+        for i, tipo_pieza in enumerate(tipos_piezas):
+            x_pieza = x_inicial + i * (tamaño_pieza + espacio_entre_piezas)
+            
+            # Crear rectángulo para la pieza
+            pieza_rect = pygame.Rect(x_pieza, y_piezas, tamaño_pieza, tamaño_pieza)
+            
+            # Dibujar fondo para la pieza (opcional, para mejor visibilidad)
+            pygame.draw.rect(self.ventana, self.COLORES['gris_claro'], pieza_rect)
+            pygame.draw.rect(self.ventana, self.COLORES['gris_medio'], pieza_rect, 2)
+            
+            # Obtener y dibujar la imagen de la pieza
+            imagen_pieza = self.imagenes_piezas.get(self.color_promocion, {}).get(tipo_pieza)
+            if imagen_pieza:
+                # Escalar la imagen al tamaño deseado
+                imagen_escalada = pygame.transform.smoothscale(imagen_pieza, (tamaño_pieza - 10, tamaño_pieza - 10))
+                imagen_rect = imagen_escalada.get_rect(center=pieza_rect.center)
+                self.ventana.blit(imagen_escalada, imagen_rect)
+            else:
+                # Fallback: dibujar texto si no hay imagen
+                texto_pieza = self.fuente_normal.render(tipo_pieza.capitalize(), True, self.COLORES['negro'])
+                texto_rect = texto_pieza.get_rect(center=pieza_rect.center)
+                self.ventana.blit(texto_pieza, texto_rect)
+            
+            # Guardar referencia al rectángulo para detectar clics
+            self.elementos_ui['popup_promocion'][tipo_pieza] = pieza_rect
+    
+    def _manejar_clic_popup_fin_juego(self, pos):
+        """
+        Maneja los clics en los botones del popup de fin de juego.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        if 'popup_fin_juego' not in self.elementos_ui:
+            return
+            
+        # Verificar clic en botón "Revancha"
+        if self.elementos_ui['popup_fin_juego']['revancha'].collidepoint(pos):
+            self._reiniciar_juego()
+            
+        # Verificar clic en botón "Menú Principal"
+        elif self.elementos_ui['popup_fin_juego']['menu_principal'].collidepoint(pos):
+            self._volver_menu_principal()
+    
+    def _manejar_clic_popup_promocion(self, pos):
+        """
+        Maneja los clics en las piezas del popup de promoción.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        if 'popup_promocion' not in self.elementos_ui:
+            return
+            
+        # Verificar clic en cada opción de pieza
+        for tipo_pieza, rect in self.elementos_ui['popup_promocion'].items():
+            if rect.collidepoint(pos):
+                # Guardar la pieza seleccionada
+                self.pieza_promocion_seleccionada = tipo_pieza
+                
+                # Ocultar el popup
+                self.mostrar_popup_promocion = False
+                
+                # Notificar al controlador sobre la selección
+                if hasattr(self.controlador, 'manejar_promocion_seleccionada'):
+                    self.controlador.manejar_promocion_seleccionada(tipo_pieza)
+                
+                return
+    
+    def _reiniciar_juego(self):
+        """
+        Reinicia el juego con la misma configuración.
+        """
+        # Ocultar el popup
+        self.mostrar_popup_fin_juego = False
+        
+        # Limpiar estados de la UI
+        self.pieza_seleccionada = None
+        self.casilla_origen = None
+        self.movimientos_validos = []
+        self.casillas_captura = []
+        self.casillas_enroque_disponible = []
+        self.mensaje_estado = None
+        
+        # Solicitar al controlador reiniciar el juego
+        # El controlador es responsable de actualizar los datos del modelo
+        # y actualizar los datos en la vista (siguiendo patrón MVC)
+        self.controlador.reiniciar_juego()
+        
+        # Reiniciar el temporizador
+        self.iniciar_temporizador()
+    
+    def _volver_menu_principal(self):
+        """
+        Vuelve al menú principal/pantalla de configuración.
+        """
+        # Ocultar el popup
+        self.mostrar_popup_fin_juego = False
+        
+        # Limpiar estados de la UI
+        self.pieza_seleccionada = None
+        self.casilla_origen = None
+        self.movimientos_validos = []
+        self.casillas_captura = []
+        self.casillas_enroque_disponible = []
+        self.mensaje_estado = None
+        
+        # Cambiar a la vista de configuración
+        self.cambiar_vista('configuracion')
+        
+        # Notificar al controlador
+        self.controlador.volver_menu_principal()
+
+    def _es_clic_en_historial(self, pos):
+        """
+        Verifica si un clic fue en el área del historial de movimientos.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+            
+        Returns:
+            bool: True si el clic fue en el área del historial.
+        """
+        # Coordenadas del panel lateral derecho (negro)
+        x_panel = self.DIMENSIONES['ventana'][0] - self.DIMENSIONES['panel_lateral']
+        
+        # Solo si el clic está en el panel lateral derecho
+        if pos[0] < x_panel:
+            return False
+            
+        # Para determinar la posición y, necesitamos calcular dónde comienza el historial
+        # Esto depende de cuántas piezas capturadas hay, por lo que es variable
+        tablero = self.controlador.obtener_tablero()
+        if not tablero:
+            return False
+            
+        # Aproximación: verificar si el clic está en la mitad inferior del panel
+        return pos[1] > 250  # Valor ajustado para la nueva posición del historial
+        
+    def _manejar_clic_historial(self, pos):
+        """
+        Maneja clics en el área del historial de movimientos.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        # En una implementación completa, este método calcularía qué movimiento
+        # se clicó y saltaría a esa posición en el historial.
+        
+        # Para esta implementación básica, simplemente registramos que se detectó un clic
+        logger.debug(f"Clic detectado en historial de movimientos en posición {pos}")
+        
+        # Aquí iría la lógica para:
+        # 1. Determinar qué movimiento del historial se clicó
+        # 2. Obtener la representación de tablero correspondiente a ese movimiento
+        # 3. Cargar esa representación en el tablero actual
+        
+        # Esto requeriría que cada movimiento en el historial tenga asociada
+        # una representación del estado del tablero, o la capacidad de recrear
+        # el estado del tablero hasta ese movimiento.
+        
+        # Ejemplo conceptual (no implementado):
+        # indice_movimiento = self._calcular_indice_movimiento_desde_pos(pos)
+        # if indice_movimiento is not None:
+        #     self.controlador.saltar_a_movimiento(indice_movimiento) 
+
+    def _dibujar_boton_desarrollo(self):
+        """
+        Dibuja un botón de desarrollo en la esquina inferior derecha de la pantalla.
+        Este botón permite activar rápidamente diferentes escenarios de fin de juego.
+        """
+        # Definir posición y tamaño del botón
+        ancho, alto = 120, 30
+        x = self.DIMENSIONES['ventana'][0] - ancho - 10  # 10px desde el borde derecho
+        y = self.DIMENSIONES['ventana'][1] - alto - 10   # 10px desde el borde inferior
+        
+        # Dibujar botón (con un color distintivo para desarrollo)
+        boton_rect = pygame.Rect(x, y, ancho, alto)
+        pygame.draw.rect(self.ventana, (255, 100, 100), boton_rect)  # Rojo claro
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], boton_rect, 2)  # Borde negro
+        
+        # Texto del botón
+        texto = self.fuente_normal.render("DEV: FIN JUEGO", True, self.COLORES['negro'])
+        texto_rect = texto.get_rect(center=boton_rect.center)
+        self.ventana.blit(texto, texto_rect)
+        
+        # Guardar referencia al rectángulo para detectar clics
+        self.botones_desarrollo['fin_juego'] = boton_rect
+    
+    def _es_clic_en_boton_desarrollo(self, pos):
+        """
+        Verifica si se hizo clic en el botón de desarrollo.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+            
+        Returns:
+            bool: True si el clic fue en el botón de desarrollo.
+        """
+        return 'fin_juego' in self.botones_desarrollo and self.botones_desarrollo['fin_juego'].collidepoint(pos)
+    
+    def _dibujar_menu_desarrollo(self):
+        """
+        Dibuja un menú con opciones para simular diferentes escenarios de fin de juego.
+        """
+        # Definir posición y tamaño del menú (justo encima del botón de desarrollo)
+        ancho_menu = 180
+        alto_opcion = 30
+        num_opciones = 7  # Aumentado de 5 a 7 para incluir las nuevas opciones
+        alto_menu = alto_opcion * num_opciones + 10  # 5px de padding arriba y abajo
+        
+        x = self.DIMENSIONES['ventana'][0] - ancho_menu - 10  # 10px desde el borde derecho
+        y = self.DIMENSIONES['ventana'][1] - alto_menu - 50   # 10px + altura del botón desde el borde inferior
+        
+        # Dibujar fondo del menú
+        menu_rect = pygame.Rect(x, y, ancho_menu, alto_menu)
+        pygame.draw.rect(self.ventana, self.COLORES['blanco'], menu_rect)
+        pygame.draw.rect(self.ventana, self.COLORES['negro'], menu_rect, 2)  # Borde negro
+        
+        # Opciones del menú
+        opciones = [
+            "Victoria Blancas", 
+            "Victoria Negras", 
+            "Tablas (Ahogado)", 
+            "Tablas (Insuficiente)",
+            "Tablas (Repetición)",
+            "Tablas (50 Movimientos)",
+            "Cerrar Menú"
+        ]
+        
+        # Dibujar cada opción
+        self.botones_desarrollo['opciones'] = []
+        for i, opcion in enumerate(opciones):
+            opcion_y = y + 5 + i * alto_opcion
+            opcion_rect = pygame.Rect(x + 5, opcion_y, ancho_menu - 10, alto_opcion - 5)
+            
+            # Color de fondo diferente para la última opción (Cerrar)
+            if i == len(opciones) - 1:
+                pygame.draw.rect(self.ventana, self.COLORES['gris_claro'], opcion_rect)
+            else:
+                pygame.draw.rect(self.ventana, self.COLORES['blanco'], opcion_rect)
+            
+            # Texto de la opción
+            texto = self.fuente_normal.render(opcion, True, self.COLORES['negro'])
+            texto_rect = texto.get_rect(midleft=(opcion_rect.left + 5, opcion_rect.centery))
+            self.ventana.blit(texto, texto_rect)
+            
+            # Guardar referencia al rectángulo para detectar clics
+            self.botones_desarrollo['opciones'].append((opcion, opcion_rect))
+    
+    def _manejar_clic_menu_desarrollo(self, pos):
+        """
+        Maneja los clics en las opciones del menú de desarrollo.
+        
+        Args:
+            pos: Posición (x, y) del clic.
+        """
+        # Verificar clic en las opciones del menú
+        if 'opciones' in self.botones_desarrollo:
+            for opcion, rect in self.botones_desarrollo['opciones']:
+                if rect.collidepoint(pos):
+                    self._activar_opcion_desarrollo(opcion)
+                    return
+        
+        # Si se hizo clic fuera del menú, cerrarlo
+        self.mostrar_menu_dev = False
+    
+    def _activar_opcion_desarrollo(self, opcion):
+        """
+        Activa la opción de desarrollo seleccionada.
+        
+        Args:
+            opcion: Texto de la opción seleccionada.
+        """
+        # Cerrar el menú en cualquier caso
+        self.mostrar_menu_dev = False
+        
+        # Activar la opción correspondiente
+        if opcion == "Victoria Blancas":
+            self.controlador.dev_test_victoria_blancas()
+        elif opcion == "Victoria Negras":
+            self.controlador.dev_test_victoria_negras()
+        elif opcion == "Tablas (Ahogado)":
+            self.controlador.dev_test_tablas_ahogado()
+        elif opcion == "Tablas (Insuficiente)":
+            self.controlador.dev_test_tablas_insuficiente()
+        elif opcion == "Tablas (Repetición)":
+            self.controlador.dev_test_tablas_repeticion()
+        elif opcion == "Tablas (50 Movimientos)":
+            self.controlador.dev_test_tablas_50_movimientos()
+        # "Cerrar Menú" no requiere acción adicional 
