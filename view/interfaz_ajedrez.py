@@ -64,7 +64,7 @@ class InterfazAjedrez:
         
         # Configurar ventana
         self.ventana = pygame.display.set_mode(self.DIMENSIONES['ventana'])
-        pygame.display.set_caption("TU AJEDREZ")
+        pygame.display.set_caption("ChessPy")
         
         # Cargar fuentes (Intentar San Francisco, con Arial como fallback)
         # Nota: La disponibilidad real de 'SF Pro' puede depender de la instalación de Pygame/SDL
@@ -312,7 +312,7 @@ class InterfazAjedrez:
         self.ventana.blit(icono_surf, icono_rect)
         
         # Título (con espaciado)
-        title_surf, title_rect = self._render_text_with_spacing("TU AJEDREZ", self.fuente_titulo, self.COLORES['negro'], 5) # 5px de espaciado
+        title_surf, title_rect = self._render_text_with_spacing("ChessPy", self.fuente_titulo, self.COLORES['negro'], 5) # 5px de espaciado
         title_rect.center = self.elementos_ui['config']['titulo_pos']
         self.ventana.blit(title_surf, title_rect)
         
